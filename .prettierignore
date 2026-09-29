@@ -3,3 +3,4 @@ release
 build
 package-lock.json
 *.md
+supabase/.temp

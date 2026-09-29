@@ -27,7 +27,10 @@ Deno.serve(async (req) => {
 
   const link = await admin.auth.admin.generateLink({ type: 'magiclink', email });
   if (link.error) return reply({ error: 'Falha ao iniciar a sessão.' }, 500);
-  const { data, error } = await anon.auth.verifyOtp({ type: 'magiclink', token_hash: link.data.properties.hashed_token });
+  const { data, error } = await anon.auth.verifyOtp({
+    type: 'magiclink',
+    token_hash: link.data.properties.hashed_token,
+  });
   if (error || !data.session || !data.user) return reply({ error: 'Falha ao iniciar a sessão.' }, 500);
 
   const saved = await admin.from('profiles').upsert({ id: data.user.id, mc_uuid: profile.id, name: profile.name });
