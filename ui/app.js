@@ -1,26 +1,59 @@
+import { setWallpaper } from './wallpaper.js';
+import { createSettingsStore, createConversation } from './state.mjs';
+
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
 const api = window.antagon;
 document.body.classList.add(api.platform);
-let settings, account, toastTimer;
+let settings, settingsStore, account, toastTimer;
 function toast(message) {
   $('#toast').textContent = message;
   $('#toast').classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4e3);
 }
-async function persist() {
-  try {
-    settings = await api.saveSettings(settings);
-  } catch (e) {
-    toast(e.message);
-  }
+async function persist(patch) {
+  const request = settingsStore.update(patch);
+  settings = settingsStore.value;
+  await request;
+  settings = settingsStore.value;
 }
+
+function action(selector, handler, error = (e) => toast(e.message)) {
+  const button = $(selector);
+  button.onclick = async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await handler();
+    } catch (e) {
+      error(e);
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+function setting(selector, key, read) {
+  $(selector).onchange = async (event) => {
+    try {
+      await persist({ [key]: read(event.target) });
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+}
+
 $$('[data-view]').forEach(
   (tab) =>
     (tab.onclick = () => {
       $$('.tab').forEach((t) => t.classList.toggle('active', t === tab));
       $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
+      if (tab.dataset.view === 'friends' && conversation.selected) {
+        unread.delete(conversation.selected);
+        renderCommunity();
+        renderMessages();
+      }
     }),
 );
 function renderProfile() {
@@ -47,18 +80,22 @@ $('#profile-open').onclick = () => {
   $('#account-dialog').showModal();
 };
 $$('[data-close]').forEach((b) => (b.onclick = () => $('#' + b.dataset.close).close()));
-$('#save-nick').onclick = async () => {
-  const nick = $('#nickname').value.trim();
-  if (!/^[A-Za-z0-9_]{3,16}$/.test(nick)) {
-    $('#account-error').textContent = 'Use 3 a 16 letras, números ou _.';
-    return;
-  }
-  settings.nickname = nick;
-  settings.mode = 'offline';
-  await persist();
-  renderProfile();
-  $('#account-dialog').close();
-};
+action(
+  '#save-nick',
+  async () => {
+    const nick = $('#nickname').value.trim();
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(nick)) {
+      $('#account-error').textContent = 'Use 3 a 16 letras, números ou _.';
+      return;
+    }
+    await persist({ nickname: nick, mode: 'offline' });
+    renderProfile();
+    $('#account-dialog').close();
+  },
+  (e) => {
+    $('#account-error').textContent = e.message;
+  },
+);
 $('#nickname').onkeydown = (e) => {
   if (e.key === 'Enter') $('#save-nick').click();
 };
@@ -68,8 +105,7 @@ $('#login-microsoft').onclick = async () => {
   $('#account-error').textContent = '';
   try {
     if (!account) account = await api.login();
-    settings.mode = 'microsoft';
-    await persist();
+    await persist({ mode: 'microsoft' });
     renderProfile();
     $('#account-dialog').close();
     community
@@ -82,20 +118,34 @@ $('#login-microsoft').onclick = async () => {
     button.disabled = false;
   }
 };
-$('#logout-microsoft').onclick = async () => {
-  await api.logout();
-  account = null;
-  settings.mode = 'offline';
-  await persist();
-  renderProfile();
-};
+action(
+  '#logout-microsoft',
+  async () => {
+    await api.logout();
+    account = null;
+    await persist({ mode: 'offline' });
+    renderProfile();
+    resetCommunity();
+  },
+  (e) => {
+    $('#account-error').textContent = e.message;
+  },
+);
 function updateState(state) {
   gameRunning = ['launching', 'running'].includes(state.phase);
   document.body.dataset.phase = state.phase;
   const working = ['preparing', 'launching', 'running', 'updating'].includes(state.phase);
   $('#launch-status').textContent = state.message;
   $('#launch').disabled = working;
-  $('#launch').textContent = state.phase === 'running' ? 'NO JOGO' : working ? 'ABRINDO…' : 'JOGAR';
+  $('#launch').textContent =
+    state.phase === 'running'
+      ? 'NO JOGO'
+      : state.phase === 'updating'
+        ? 'ATUALIZANDO…'
+        : working
+          ? 'ABRINDO…'
+          : 'JOGAR';
+  for (const button of $$('#optifine-install, #optifine-remove')) button.disabled = working;
   $('#progress-track').style.display = ['preparing', 'updating'].includes(state.phase) ? 'block' : 'none';
   $('#update').disabled = working;
   $('#progress-bar').style.width = Math.max(0, Math.min(100, state.percent || 0)) + '%';
@@ -107,33 +157,32 @@ $('#launch').onclick = async () => {
     return;
   }
   try {
+    $('#launch').disabled = true;
+    await settingsStore.flush();
     await api.launch();
   } catch (e) {
     toast(e.message);
+    $('#launch').disabled = false;
   }
 };
 $('#memory').oninput = (e) => ($('#memory-value').textContent = e.target.value + ' GB');
-$('#memory').onchange = (e) => {
-  settings.memory = Number(e.target.value);
-  persist();
-};
-$('#fullscreen').onchange = (e) => {
-  settings.fullscreen = e.target.checked;
-  persist();
-};
-$('#pack-toggle').onchange = (e) => {
-  settings.pack = e.target.checked;
-  persist();
-};
+setting('#memory', 'memory', (input) => Number(input.value));
+setting('#fullscreen', 'fullscreen', (input) => input.checked);
+setting('#pack-toggle', 'pack', (input) => input.checked);
+setting('#share-server', 'shareServer', (input) => input.checked);
+setting('#discord-presence', 'discordPresence', (input) => input.checked);
+api.discord.onState((state) => {
+  $('#discord-state').textContent = state.message;
+});
 function renderOptifine(file) {
   $('#optifine-state').textContent = file || 'Não instalado';
   $('#optifine-install').textContent = file ? 'Trocar' : 'Instalar';
   $('#optifine-remove').hidden = !file;
 }
-$('#optifine-site').onclick = () => {
-  api.optifineSite();
+action('#optifine-site', async () => {
+  await api.optifineSite();
   toast('Baixe a versão 1.8.9 (HD U M5) e depois clique em Instalar.');
-};
+});
 $('#optifine-install').onclick = async () => {
   try {
     renderOptifine(await api.installOptifine());
@@ -141,21 +190,21 @@ $('#optifine-install').onclick = async () => {
     toast(e.message);
   }
 };
-$('#optifine-remove').onclick = async () => renderOptifine(await api.removeOptifine());
-function renderWallpaper(custom) {
+action('#optifine-remove', async () => renderOptifine(await api.removeOptifine()));
+async function renderWallpaper(custom) {
   $('#wallpaper-state').textContent = custom ? 'Imagem personalizada' : 'Padrão';
   $('#wallpaper-reset').hidden = !custom;
-  window.setWallpaper(custom);
+  return setWallpaper(custom);
 }
 $('#wallpaper-pick').onclick = async () => {
   try {
     const custom = await api.pickWallpaper();
-    if (custom !== void 0) renderWallpaper(custom);
+    if (custom !== void 0) await renderWallpaper(custom);
   } catch (e) {
     toast(e.message);
   }
 };
-$('#wallpaper-reset').onclick = async () => renderWallpaper(await api.resetWallpaper());
+action('#wallpaper-reset', async () => renderWallpaper(await api.resetWallpaper()));
 let updateStatus = null;
 const UPDATE_LABEL = {
   dev: () => 'Versão de desenvolvimento',
@@ -182,18 +231,18 @@ function renderBackground(mode) {
   document.body.dataset.background = mode;
   $('#background-switch').textContent = 'Fundo: ' + (mode === 'ascii' ? 'Logo' : 'Paisagem');
 }
-$('#background-switch').onclick = () => {
-  settings.background = settings.background === 'ascii' ? 'scene' : 'ascii';
-  renderBackground(settings.background);
-  persist();
-};
-$('#open-folder').onclick = async () => {
+action('#background-switch', async () => {
+  const background = settings.background === 'ascii' ? 'scene' : 'ascii';
+  renderBackground(background);
+  await persist({ background });
+});
+action('#open-folder', async () => {
   if (await api.openFolder()) toast('A pasta será criada ao abrir o jogo pela primeira vez.');
-};
-$('#open-logs').onclick = async () => {
+});
+action('#open-logs', async () => {
   $('#logs-text').textContent = await api.logs();
   $('#logs-dialog').showModal();
-};
+});
 const community = api.community;
 const ACTIVITY = {
   launcher: () => 'No launcher',
@@ -204,11 +253,13 @@ const ACTIVITY = {
   offline: () => 'Offline',
 };
 let people = { me: null, friends: [], incoming: [], outgoing: [] },
-  chatWith = null,
   unread = new Set(),
   loaded = false,
   gameRunning = false,
-  refreshTimer;
+  refreshTimer,
+  refreshRequest = null,
+  communityRevision = 0;
+const conversation = createConversation();
 const escape = (text) =>
   String(text ?? '').replace(
     /[&<>"']/g,
@@ -233,9 +284,13 @@ function renderCommunity() {
   const pending = people.incoming.length + unread.size;
   $('#friends-badge').textContent = pending;
   $('#friends-badge').hidden = !pending;
-  if (!me) return;
+  if (!me) {
+    conversation.clear();
+    $('#messages').replaceChildren();
+    return;
+  }
   const row = (p, detail, actions = '', extra = '') =>
-    `<div class="person ${p.online ? 'online' : ''} ${p.id === chatWith ? 'active' : ''}" data-person="${p.id}">${head(p)}<span class="who"><b>${escape(p.name)}</b><small>${escape(detail)}</small></span>${extra}<span class="actions">${actions}</span></div>`;
+    `<div class="person ${p.online ? 'online' : ''} ${p.id === conversation.selected ? 'active' : ''}" data-person="${escape(p.id)}">${head(p)}<span class="who"><b>${escape(p.name)}</b><small>${escape(detail)}</small></span>${extra}<span class="actions">${actions}</span></div>`;
   $('#requests').innerHTML =
     (people.incoming.length
       ? '<h3>Pedidos</h3>' +
@@ -244,7 +299,7 @@ function renderCommunity() {
             row(
               p,
               'Quer ser seu amigo',
-              `<button class="primary" data-accept="${p.id}">Aceitar</button><button class="secondary" data-remove="${p.id}">Recusar</button>`,
+              `<button class="primary" data-accept="${escape(p.id)}">Aceitar</button><button class="secondary" data-remove="${escape(p.id)}">Recusar</button>`,
             ),
           )
           .join('')
@@ -252,10 +307,12 @@ function renderCommunity() {
     (people.outgoing.length
       ? '<h3>Enviados</h3>' +
         people.outgoing
-          .map((p) => row(p, 'Pedido enviado', `<button class="secondary" data-remove="${p.id}">Cancelar</button>`))
+          .map((p) =>
+            row(p, 'Pedido enviado', `<button class="secondary" data-remove="${escape(p.id)}">Cancelar</button>`),
+          )
           .join('')
       : '');
-  const friends = [...people.friends].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name));
+  const friends = [...people.friends].sort((a, b) => b.online - a.online || (a.name || '').localeCompare(b.name || ''));
   $('#friend-list').innerHTML =
     `<h3>Amigos · ${friends.filter((f) => f.online).length} online</h3>` +
     (friends.length
@@ -263,7 +320,7 @@ function renderCommunity() {
           .map((p) =>
             row(
               p,
-              ACTIVITY[p.activity](p),
+              (ACTIVITY[p.activity] || ACTIVITY.offline)(p),
               p.activity === 'server' && !gameRunning
                 ? `<button class="primary" data-join="${escape(p.server)}">Entrar</button>`
                 : '',
@@ -272,52 +329,89 @@ function renderCommunity() {
           )
           .join('')
       : '<p class="chat-empty">Adicione um amigo pelo nick do Minecraft.</p>');
-  const friend = people.friends.find((f) => f.id === chatWith);
+  const friend = people.friends.find((f) => f.id === conversation.selected);
   $('#chat-empty').hidden = !!friend;
   $('#chat-head').hidden = $('#chat-form').hidden = !friend;
   if (friend) $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>`;
-  else $('#messages').innerHTML = '';
+  else {
+    conversation.clear();
+    $('#messages').replaceChildren();
+  }
 }
 
-async function refreshCommunity() {
-  try {
-    const next = await community.state();
-    if (loaded)
-      for (const f of next.friends)
-        if (f.online && !people.friends.find((p) => p.id === f.id)?.online) toast(f.name + ' está online');
-    for (const p of next.incoming)
-      if (loaded && !people.incoming.find((i) => i.id === p.id)) toast(p.name + ' quer ser seu amigo');
-    people = next;
-    loaded = true;
-    renderCommunity();
-  } catch (e) {
-    toast(e.message);
-  }
+function resetCommunity() {
+  communityRevision++;
+  people = { me: null, friends: [], incoming: [], outgoing: [] };
+  loaded = false;
+  unread.clear();
+  conversation.clear();
+  renderCommunity();
+}
+
+function refreshCommunity() {
+  if (refreshRequest) return refreshRequest;
+  const revision = communityRevision;
+  refreshRequest = (async () => {
+    try {
+      const next = await community.state();
+      if (revision !== communityRevision) return;
+      if (loaded) {
+        const previousFriends = new Map(people.friends.map((person) => [person.id, person]));
+        const previousRequests = new Set(people.incoming.map((person) => person.id));
+        for (const friend of next.friends)
+          if (friend.online && !previousFriends.get(friend.id)?.online) toast(friend.name + ' está online');
+        for (const person of next.incoming)
+          if (!previousRequests.has(person.id)) toast(person.name + ' quer ser seu amigo');
+      }
+      people = next;
+      loaded = true;
+      renderCommunity();
+    } catch (error) {
+      if (revision === communityRevision) toast(error.message);
+    } finally {
+      refreshRequest = null;
+    }
+  })();
+  return refreshRequest;
 }
 const refreshSoon = () => {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(refreshCommunity, 300);
 };
 
-function appendMessage(message) {
-  const bubble = document.createElement('div');
-  bubble.className = 'message' + (message.sender === people.me?.id ? ' mine' : '');
-  bubble.textContent = message.body;
-  $('#messages').append(bubble);
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+function renderMessages() {
+  const list = $('#messages');
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+  const fragment = document.createDocumentFragment();
+  for (const message of conversation.messages) {
+    const bubble = document.createElement('div');
+    bubble.className = 'message' + (message.sender === people.me?.id ? ' mine' : '');
+    bubble.textContent = message.body;
+    fragment.append(bubble);
+  }
+  list.replaceChildren(fragment);
+  list.setAttribute('aria-busy', String(conversation.loading));
+  if (atBottom) list.scrollTop = list.scrollHeight;
 }
 
 async function openChat(id) {
-  chatWith = id;
+  const request = conversation.open(id, community.messages);
   unread.delete(id);
   renderCommunity();
-  $('#messages').innerHTML = '';
+  $('#chat-input').value = '';
+  renderMessages();
   try {
-    (await community.messages(id)).forEach(appendMessage);
-  } catch (e) {
-    toast(e.message);
+    if (await request) {
+      renderMessages();
+      $('#messages').scrollTop = $('#messages').scrollHeight;
+      $('#chat-input').focus();
+    }
+  } catch (error) {
+    if (conversation.selected === id) {
+      renderMessages();
+      toast(error.message);
+    }
   }
-  $('#chat-input').focus();
 }
 
 $('#community-login').onclick = async () => {
@@ -338,12 +432,10 @@ $('#community-login').onclick = async () => {
     button.disabled = false;
   }
 };
-$('#community-logout').onclick = async () => {
+action('#community-logout', async () => {
   await community.logout();
-  people = { me: null, friends: [], incoming: [], outgoing: [] };
-  chatWith = null;
-  renderCommunity();
-};
+  resetCommunity();
+});
 $('#add-friend').onsubmit = async (e) => {
   e.preventDefault();
   try {
@@ -373,36 +465,50 @@ $('#view-friends').addEventListener('click', async (e) => {
 $('#chat-form').onsubmit = async (e) => {
   e.preventDefault();
   const text = $('#chat-input').value.trim();
-  if (!text || !chatWith) return;
+  const recipient = conversation.selected;
+  if (!text || !recipient) return;
   $('#chat-input').value = '';
   try {
-    await community.send(chatWith, text);
+    const message = await community.send(recipient, text);
+    if (message && conversation.receive(message)) renderMessages();
   } catch (error) {
     toast(error.message);
-    $('#chat-input').value = text;
+    if (conversation.selected === recipient && !$('#chat-input').value) $('#chat-input').value = text;
   }
 };
 community.onEvent((event) => {
   if (event.type !== 'message') return refreshSoon();
   const m = event.payload;
   const other = m.sender === people.me?.id ? m.recipient : m.sender;
-  if (other === chatWith && $('#view-friends').classList.contains('active')) appendMessage(m);
-  else if (m.sender !== people.me?.id) {
+  if (other === conversation.selected) {
+    if (conversation.receive(m)) renderMessages();
+    if (!$('#view-friends').classList.contains('active') && m.sender !== people.me?.id) {
+      unread.add(other);
+      renderCommunity();
+    }
+  } else if (m.sender !== people.me?.id) {
     unread.add(other);
     toast((people.friends.find((f) => f.id === other)?.name || 'Amigo') + ': ' + m.body.slice(0, 60));
     renderCommunity();
   }
 });
-setInterval(refreshCommunity, 3e4);
-$('#share-server').onchange = (e) => {
-  settings.shareServer = e.target.checked;
-  persist();
-};
+const communityTimer = setInterval(() => {
+  if (!document.hidden && people.me) refreshCommunity();
+}, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && settings) refreshSoon();
+});
+window.addEventListener('pagehide', () => {
+  clearInterval(communityTimer);
+  clearTimeout(refreshTimer);
+  clearTimeout(toastTimer);
+});
 
 (async () => {
   try {
     const data = await api.init();
-    settings = data.settings;
+    settingsStore = createSettingsStore(data.settings, api.saveSettings);
+    settings = settingsStore.value;
     account = data.account;
     renderProfile();
     $('#version').textContent = data.version;
@@ -414,8 +520,15 @@ $('#share-server').onchange = (e) => {
     $('#pack-toggle').checked = settings.pack;
     $('#install-state').textContent = data.installed ? 'Forge · instalado' : 'Forge · será instalado ao jogar';
     renderOptifine(data.optifine);
-    renderWallpaper(data.wallpaper);
+    renderWallpaper(data.wallpaper).catch((error) => toast(error.message));
     $('#share-server').checked = settings.shareServer;
+    $('#discord-presence').checked = settings.discordPresence;
+    api.discord
+      .state()
+      .then((state) => {
+        $('#discord-state').textContent = state.message;
+      })
+      .catch((error) => toast(error.message));
     refreshCommunity();
     updateState(data.state);
     api.onState(updateState);

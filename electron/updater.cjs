@@ -2,8 +2,9 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const os = require('node:os');
-const crypto = require('node:crypto');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const runFile = require('node:util').promisify(execFile);
+const { writeDownload } = require('./files.cjs');
 const { extract } = require('./runtime.cjs');
 
 const REPO = 'voxesz/antagon-client';
@@ -49,17 +50,11 @@ async function check(current) {
 async function download(update, file, progress) {
   const res = await fetch(update.url, { signal: AbortSignal.timeout(6e5) });
   if (!res.ok || !HOSTS.has(new URL(res.url).hostname)) throw Error('Não foi possível baixar a atualização.');
-  const hash = crypto.createHash('sha256');
-  const out = fs.createWriteStream(file);
-  let bytes = 0;
-  for await (const chunk of res.body) {
-    hash.update(chunk);
-    bytes += chunk.length;
-    if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
-    progress(Math.round((bytes / update.size) * 100));
-  }
-  await new Promise((resolve, reject) => out.end((error) => (error ? reject(error) : resolve())));
-  if (hash.digest('hex') !== update.sha256) throw Error('A atualização baixada está corrompida. Tente de novo.');
+  await writeDownload(res, file, {
+    algorithm: 'sha256',
+    expected: update.sha256,
+    progress: (bytes) => progress(Math.min(100, Math.round((bytes / update.size) * 100))),
+  });
 }
 
 async function install(update, progress) {
@@ -82,7 +77,7 @@ async function install(update, progress) {
       windowsHide: true,
     }).unref();
   } else {
-    execFileSync('/usr/bin/ditto', ['-x', '-k', zip, unpacked]);
+    await runFile('/usr/bin/ditto', ['-x', '-k', zip, unpacked]);
     const fresh = path.join(unpacked, 'Antagon Client.app');
     if (!fs.existsSync(fresh)) throw Error('Atualização inválida.');
     await fsp.writeFile(script, MAC_SWAP);

@@ -71,7 +71,7 @@
           <div class="chat">
             <p class="chat-empty" id="chat-empty">Escolha um amigo para conversar.</p>
             <div class="chat-head" id="chat-head" hidden></div>
-            <div class="messages" id="messages"></div>
+            <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Mensagens"></div>
             <form class="chat-form" id="chat-form" hidden>
               <input id="chat-input" maxlength="500" autocomplete="off" placeholder="Mensagem" />
               <button class="primary">Enviar</button>
@@ -116,12 +116,19 @@
           </div>
           <h2>Comunidade</h2>
           <div class="row">
-            <label for="share-server">Mostrar para amigos o servidor em que estou</label
+            <label for="share-server">Compartilhar o servidor com amigos e no Discord</label
             ><label class="switch"><input id="share-server" type="checkbox" /><span></span></label>
           </div>
           <div class="row">
             <span>Conta na comunidade<small id="community-account">Não conectado</small></span
             ><button class="secondary" id="community-logout" hidden>Sair</button>
+          </div>
+          <h2>Discord</h2>
+          <div class="row">
+            <label for="discord-presence"
+              >Mostrar minha atividade<small id="discord-state" role="status">Aguardando configuração</small></label
+            >
+            <label class="switch"><input id="discord-presence" type="checkbox" /><span></span></label>
           </div>
           <h2>Arquivos</h2>
           <div class="row"><span>Pasta do jogo</span><button class="secondary" id="open-folder">Abrir</button></div>
@@ -166,8 +173,7 @@
       <pre id="logs-text"></pre>
     </dialog>
     <div id="toast" role="status"></div>
-    <script src="wallpaper.js"></script>
-    <script src="ascii.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="ascii.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

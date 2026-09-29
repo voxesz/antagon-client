@@ -1,6 +1,9 @@
+import { createScene, trackPointer } from './scene.js';
+
 const canvas = document.getElementById('map');
-const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
 const stage = document.getElementById('view-play');
+const pointer = trackPointer(stage);
+const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
 const vertex = `#version 300 es
 in vec2 p;out vec2 v;void main(){v=p*.5+.5;gl_Position=vec4(p,0,1);}`;
 const fragment = `#version 300 es
@@ -35,28 +38,68 @@ void main(){
   float vig=smoothstep(1.25,.35,length((v-.5)*vec2(1.2,1.)));c*=mix(.45,1.,vig);
   o=vec4(clamp(c,0.,1.),1);
 }`;
-function shader(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(s));
-  return s;
+
+let program, buffer, uniforms, textures;
+let size = [16, 9],
+  sunRays = 1,
+  current = null,
+  revision = 0,
+  mx = 0,
+  my = 0;
+const scene = createScene(canvas, 'scene', (now, delta, { w, h, reducedMotion }) => {
+  gl.viewport(0, 0, w, h);
+  const smoothing = 1 - Math.exp(-delta / 325);
+  mx = reducedMotion ? 0 : mx + (pointer.x - mx) * smoothing;
+  my = reducedMotion ? 0 : my + (pointer.y - my) * smoothing;
+  gl.uniform2f(uniforms.res, w, h);
+  gl.uniform2f(uniforms.img, ...size);
+  gl.uniform2f(uniforms.mouse, mx, my);
+  gl.uniform1f(uniforms.time, now / 1000);
+  gl.uniform1f(uniforms.rays, sunRays);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+});
+
+function shader(type, source) {
+  const result = gl.createShader(type);
+  gl.shaderSource(result, source);
+  gl.compileShader(result);
+  if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+    const error = gl.getShaderInfoLog(result);
+    gl.deleteShader(result);
+    throw Error(error);
+  }
+  return result;
 }
-const program = gl.createProgram();
-gl.attachShader(program, shader(gl.VERTEX_SHADER, vertex));
-gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragment));
-gl.linkProgram(program);
-gl.useProgram(program);
-gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-const loc = gl.getAttribLocation(program, 'p');
-gl.enableVertexAttribArray(loc);
-gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-const u = (name) => gl.getUniformLocation(program, name);
+
+function initialize() {
+  program = gl.createProgram();
+  const shaders = [shader(gl.VERTEX_SHADER, vertex), shader(gl.FRAGMENT_SHADER, fragment)];
+  for (const compiled of shaders) gl.attachShader(program, compiled);
+  gl.linkProgram(program);
+  for (const compiled of shaders) gl.deleteShader(compiled);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program));
+  gl.useProgram(program);
+  buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const position = gl.getAttribLocation(program, 'p');
+  gl.enableVertexAttribArray(position);
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+  uniforms = Object.fromEntries(
+    ['scene', 'depth', 'res', 'img', 'mouse', 'sun', 'time', 'rays'].map((name) => [
+      name,
+      gl.getUniformLocation(program, name),
+    ]),
+  );
+  textures = [gl.createTexture(), gl.createTexture()];
+  gl.uniform1i(uniforms.scene, 0);
+  gl.uniform1i(uniforms.depth, 1);
+  gl.uniform2f(uniforms.sun, 0.885, 0.21);
+}
+
 function texture(unit, source) {
-  const t = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0 + unit);
-  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.bindTexture(gl.TEXTURE_2D, textures[unit]);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -64,64 +107,52 @@ function texture(unit, source) {
   if (source) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
   else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([90, 90, 90, 255]));
 }
-const load = (src) =>
-  new Promise((ok, fail) => {
-    const i = new Image();
-    i.onload = () => ok(i);
-    i.onerror = fail;
-    i.src = src;
+
+const load = (source) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(Error('Não foi possível carregar o plano de fundo. Escolha outra imagem.'));
+    image.src = source;
   });
-let ready = false,
-  size = [16, 9],
-  sunRays = 1;
-window.setWallpaper = async (custom) => {
-  const scene = await load(custom || 'wallpaper/scene.jpg');
-  texture(0, scene);
-  texture(1, custom ? null : await load('wallpaper/depth.png'));
-  size = [scene.naturalWidth, scene.naturalHeight];
-  sunRays = custom ? 0 : 1;
-  ready = true;
-};
-gl.uniform1i(u('scene'), 0);
-gl.uniform1i(u('depth'), 1);
-gl.uniform2f(u('sun'), 0.885, 0.21);
-let mx = 0,
-  my = 0,
-  tx = 0,
-  ty = 0;
-stage.addEventListener('pointermove', (e) => {
-  const r = stage.getBoundingClientRect();
-  tx = ((e.clientX - r.left) / r.width) * 2 - 1;
-  ty = ((e.clientY - r.top) / r.height) * 2 - 1;
-});
-stage.addEventListener('pointerleave', () => {
-  tx = ty = 0;
-});
-function frame(now) {
-  requestAnimationFrame(frame);
-  if (
-    !ready ||
-    document.body.dataset.background === 'ascii' ||
-    document.hidden ||
-    !stage.classList.contains('active') ||
-    ['launching', 'running'].includes(document.body.dataset.phase)
-  )
-    return;
-  const ratio = Math.min(devicePixelRatio, 1.5),
-    w = Math.floor(canvas.clientWidth * ratio),
-    h = Math.floor(canvas.clientHeight * ratio);
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-    gl.viewport(0, 0, w, h);
+
+export async function setWallpaper(custom) {
+  const request = ++revision;
+  const source = custom || 'wallpaper/scene.jpg';
+  const [image, depth] = await Promise.all([load(source), custom || !gl ? null : load('wallpaper/depth.png')]);
+  if (request !== revision) return;
+  current = custom;
+  canvas.style.backgroundImage = `url(${JSON.stringify(source)})`;
+  canvas.style.backgroundSize = 'cover';
+  canvas.style.backgroundPosition = 'center';
+  if (!gl || gl.isContextLost()) return;
+  try {
+    if (!program) initialize();
+    texture(0, image);
+    texture(1, depth);
+    size = [image.naturalWidth, image.naturalHeight];
+    sunRays = custom ? 0 : 1;
+    scene.setReady(true);
+  } catch {
+    scene.setReady(false);
   }
-  mx += (tx - mx) * 0.05;
-  my += (ty - my) * 0.05;
-  gl.uniform2f(u('res'), w, h);
-  gl.uniform2f(u('img'), size[0], size[1]);
-  gl.uniform2f(u('mouse'), mx, my);
-  gl.uniform1f(u('time'), now / 1e3);
-  gl.uniform1f(u('rays'), sunRays);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
-requestAnimationFrame(frame);
+
+canvas.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault();
+  scene.setReady(false);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  program = null;
+  setWallpaper(current).catch(() => {});
+});
+window.addEventListener(
+  'pagehide',
+  () => {
+    if (!gl || !program) return;
+    textures.forEach((value) => gl.deleteTexture(value));
+    gl.deleteBuffer(buffer);
+    gl.deleteProgram(program);
+  },
+  { once: true },
+);

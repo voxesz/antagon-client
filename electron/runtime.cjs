@@ -2,8 +2,9 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const os = require('node:os');
-const crypto = require('node:crypto');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const runFile = require('node:util').promisify(execFile);
+const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
 const FORGE_URL = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/forge-${FORGE_VERSION}-universal.jar`;
@@ -54,10 +55,8 @@ async function fetchOK(url) {
 }
 async function valid(file, hash, algorithm = 'sha1') {
   if (!fs.existsSync(file)) return false;
-  const actual = crypto
-    .createHash(algorithm)
-    .update(await fsp.readFile(file))
-    .digest('hex');
+  if (!hash) return true;
+  const actual = await hashFile(file, algorithm);
   return !hash || (Array.isArray(hash) ? hash.includes(actual) : actual === hash);
 }
 async function download(url, file, hash, algorithm = 'sha1', emit = () => {}) {
@@ -73,25 +72,13 @@ async function download(url, file, hash, algorithm = 'sha1', emit = () => {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetchOK(url);
-      const total = Number(res.headers.get('content-length'));
-      const out = fs.createWriteStream(file + '.part');
-      let bytes = 0;
-      try {
-        for await (const chunk of res.body) {
-          bytes += chunk.length;
-          if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
+      await writeDownload(res, file, {
+        algorithm,
+        expected: hash,
+        progress: (bytes, total) => {
           if (total > 5e6) emit({ detail: path.basename(file), bytes, total });
-        }
-        await new Promise((resolve, reject) => {
-          out.on('error', reject);
-          out.end(resolve);
-        });
-      } catch (e) {
-        out.destroy();
-        throw e;
-      }
-      if (!(await valid(file + '.part', hash, algorithm))) throw Error('Checksum inválido: ' + path.basename(file));
-      await fsp.rename(file + '.part', file);
+        },
+      });
       return;
     } catch (e) {
       if (attempt === 2) throw e;
@@ -111,7 +98,7 @@ function allowed(lib, platform = PLATFORM) {
 }
 async function extract(archive, destination) {
   if (!archive.endsWith('.zip')) {
-    execFileSync('/usr/bin/tar', ['-xzf', archive, '-C', destination], { timeout: 12e4 });
+    await runFile('/usr/bin/tar', ['-xzf', archive, '-C', destination], { timeout: 12e4 });
     return;
   }
   const root = path.resolve(destination) + path.sep;
@@ -392,14 +379,20 @@ class Runtime {
       args[i + 3] = String(testOptions.height);
     }
     this.emit({ phase: 'launching', message: 'Abrindo Minecraft', percent: 100 });
+    const logDir = path.join(this.root, 'logs');
+    await fsp.mkdir(logDir, { recursive: true });
+    await fsp.rm(path.join(this.game, 'antagon-status.txt'), { force: true });
+    const file = await fsp.open(path.join(logDir, 'game.log'), 'w', 0o600);
+    const log = file.createWriteStream();
     const child = spawn(installation.java, args, {
       cwd: this.game,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.child = child;
-    const logDir = path.join(this.root, 'logs');
-    await fsp.mkdir(logDir, { recursive: true });
-    const log = fs.createWriteStream(path.join(logDir, 'game.log'), { flags: 'w', mode: 384 });
+    log.on('error', () => {
+      child.kill();
+      this.emit({ phase: 'error', message: 'Não foi possível gravar o diagnóstico da partida.' });
+    });
     for (const stream of [child.stdout, child.stderr])
       stream.on('data', (data) => {
         const text = redact(data, account);
@@ -411,7 +404,7 @@ class Runtime {
       log.end();
       this.emit({ phase: 'error', message: 'Não foi possível iniciar o Java.' });
     });
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       this.child = null;
       log.end();
       this.emit({
@@ -419,6 +412,10 @@ class Runtime {
         message: code ? 'O jogo fechou com erro. Consulte o diagnóstico.' : 'Jogo fechado',
         exitCode: code,
       });
+    });
+    await new Promise((resolve, reject) => {
+      child.once('spawn', resolve);
+      child.once('error', reject);
     });
     return { pid: child.pid };
   }

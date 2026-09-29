@@ -1,3 +1,5 @@
+import { createScene, trackPointer } from './scene.js';
+
 (() => {
   const asciiCanvas = document.getElementById('ascii');
   const asciiStage = document.getElementById('view-play');
@@ -13,8 +15,16 @@
   let voxels = [];
   let ax = 0;
   let ay = 0;
-  let tx = 0;
-  let ty = 0;
+  const pointer = trackPointer(asciiStage);
+  let depth = new Float32Array(0),
+    light = new Float32Array(0);
+  const palette = Array.from({ length: 64 }, (_, index) => {
+    const b = 0.18 + (index / 63) * 0.82;
+    const red = Math.round(60 + 195 * b);
+    const green = Math.min(190, Math.round(8 + (b > 0.82 ? (b - 0.82) * 900 : 12 * b)));
+    return `rgb(${red},${green},${green})`;
+  });
+  const scene = createScene(asciiCanvas, 'ascii', drawAscii);
 
   function buildVoxels(image) {
     const mask = document.createElement('canvas');
@@ -40,38 +50,14 @@
         }
       }
     voxels = list;
+    scene.setReady(true);
   }
 
   const logo = new Image();
   logo.onload = () => buildVoxels(logo);
   logo.src = '../assets/g-light.svg';
 
-  asciiStage.addEventListener('pointermove', (e) => {
-    const r = asciiStage.getBoundingClientRect();
-    tx = ((e.clientX - r.left) / r.width) * 2 - 1;
-    ty = ((e.clientY - r.top) / r.height) * 2 - 1;
-  });
-  asciiStage.addEventListener('pointerleave', () => {
-    tx = ty = 0;
-  });
-
-  function drawAscii(now) {
-    requestAnimationFrame(drawAscii);
-    if (
-      document.body.dataset.background !== 'ascii' ||
-      document.hidden ||
-      !asciiStage.classList.contains('active') ||
-      ['launching', 'running'].includes(document.body.dataset.phase) ||
-      !voxels.length
-    )
-      return;
-    const ratio = Math.min(devicePixelRatio, 2);
-    const w = Math.floor(asciiCanvas.clientWidth * ratio);
-    const h = Math.floor(asciiCanvas.clientHeight * ratio);
-    if (asciiCanvas.width !== w || asciiCanvas.height !== h) {
-      asciiCanvas.width = w;
-      asciiCanvas.height = h;
-    }
+  function drawAscii(now, delta, { w, h, ratio, reducedMotion }) {
     const font = Math.round(11 * ratio);
     ctx.font = `600 ${font}px ui-monospace, Menlo, monospace`;
     const cw = ctx.measureText('@').width;
@@ -79,12 +65,16 @@
     const cols = Math.ceil(w / cw);
     const rows = Math.ceil(h / ch);
     const t = now / 1000;
-    ax += (ty * 0.55 + Math.sin(t * 0.37) * 0.08 - ax) * 0.06;
-    ay += (tx * 0.9 + Math.sin(t * 0.5) * 0.22 - ay) * 0.06;
+    const smoothing = 1 - Math.exp(-delta / 270);
+    ax = reducedMotion ? 0 : ax + (pointer.y * 0.55 + Math.sin(t * 0.37) * 0.08 - ax) * smoothing;
+    ay = reducedMotion ? 0 : ay + (pointer.x * 0.9 + Math.sin(t * 0.5) * 0.22 - ay) * smoothing;
     const [sy, cy, sx, cx] = [Math.sin(ay), Math.cos(ay), Math.sin(ax), Math.cos(ax)];
     const scale = (h * 0.6) / GRID_H;
-    const depth = new Float32Array(cols * rows).fill(-Infinity);
-    const light = new Float32Array(cols * rows);
+    if (depth.length !== cols * rows) {
+      depth = new Float32Array(cols * rows);
+      light = new Float32Array(cols * rows);
+    }
+    depth.fill(-Infinity);
     for (const [x, y, z, nx, ny, nz] of voxels) {
       const x1 = x * cy + z * sy;
       const z1 = -x * sy + z * cy;
@@ -108,12 +98,8 @@
     ctx.textBaseline = 'top';
     for (let cell = 0; cell < depth.length; cell++) {
       if (depth[cell] === -Infinity) continue;
-      const b = 0.18 + light[cell] * 0.82;
-      const r = Math.round(60 + 195 * b);
-      const g = Math.round(8 + (b > 0.82 ? (b - 0.82) * 900 : 12 * b));
-      ctx.fillStyle = `rgb(${r},${Math.min(g, 190)},${Math.min(g, 190)})`;
+      ctx.fillStyle = palette[Math.min(63, Math.round(light[cell] * 63))];
       ctx.fillText('@', (cell % cols) * cw, Math.floor(cell / cols) * ch);
     }
   }
-  requestAnimationFrame(drawAscii);
 })();

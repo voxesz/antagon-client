@@ -6,8 +6,10 @@ const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { Auth } = require('msmc');
 const { Runtime } = require('./runtime.cjs');
+const { atomicWrite: atomic, readTail } = require('./files.cjs');
 const updater = require('./updater.cjs');
 const { Community } = require('./community.cjs');
+const { DiscordPresence } = require('./discord.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 app.setName('Antagon Client');
 const root = process.env.ANTAGON_TEST_ROOT || path.join(app.getPath('appData'), 'Antagon Client');
@@ -20,11 +22,6 @@ let win,
   sessionAccount = null,
   busy = false;
 let state = { phase: 'idle', message: 'Pronto', percent: 0 };
-function atomic(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file + '.tmp', text, { mode: 384 });
-  fs.renameSync(file + '.tmp', file);
-}
 function loadSettings() {
   try {
     return validateSettings(JSON.parse(fs.readFileSync(path.join(root, 'settings.json'), 'utf8')));
@@ -33,8 +30,11 @@ function loadSettings() {
   }
 }
 function saveSettings(next) {
-  settings = validateSettings(next);
-  atomic(path.join(root, 'settings.json'), JSON.stringify(settings, null, 2));
+  const validated = validateSettings(next);
+  atomic(path.join(root, 'settings.json'), JSON.stringify(validated, null, 2));
+  settings = validated;
+  discord.configure(settings);
+  gameActivity();
   return settings;
 }
 const modsDir = path.join(root, 'minecraft/mods');
@@ -88,22 +88,48 @@ function emit(update) {
   if (win && !win.isDestroyed()) win.webContents.send('game:state', state);
 }
 const runtime = new Runtime(root, assets, emit);
+const discord = new DiscordPresence((event) => {
+  if (win && !win.isDestroyed()) win.webContents.send('discord:state', event);
+});
+const startedAt = Date.now();
+let activityReading = false;
 let community;
 function communityEvent(event) {
   if (win && !win.isDestroyed()) win.webContents.send('community:event', event);
 }
-function gameActivity() {
-  if (!community?.me) return;
-  if (!runtime.child) return community.setActivity('launcher');
-  let status = 'menu';
+async function gameActivity() {
+  if (activityReading) return;
+  activityReading = true;
   try {
-    status = fs.readFileSync(path.join(root, 'minecraft/antagon-status.txt'), 'utf8').trim();
-  } catch {}
-  const [activity, server] = status.split(' ');
-  if (activity === 'server') community.setActivity(settings.shareServer ? 'server' : 'playing', server);
-  else community.setActivity(['menu', 'singleplayer', 'playing'].includes(activity) ? activity : 'playing');
+    let activity = runtime.child ? 'menu' : 'launcher',
+      server = null;
+    if (runtime.child) {
+      const status = await fs.promises
+        .readFile(path.join(root, 'minecraft/antagon-status.txt'), 'utf8')
+        .catch(() => 'menu');
+      const parts = status.trim().split(' ');
+      if (['menu', 'singleplayer', 'server', 'playing'].includes(parts[0])) {
+        activity = parts[0];
+        server = parts[1] || null;
+      }
+    }
+    discord.setActivity({ activity, server, shareServer: settings.shareServer, startedAt });
+    if (community?.me)
+      await community.setActivity(activity === 'server' && !settings.shareServer ? 'playing' : activity, server);
+  } catch {
+  } finally {
+    activityReading = false;
+  }
 }
-async function microsoftSession() {
+let refreshingAccount;
+function microsoftSession() {
+  if (!refreshingAccount)
+    refreshingAccount = refreshMicrosoftSession().finally(() => {
+      refreshingAccount = null;
+    });
+  return refreshingAccount;
+}
+async function refreshMicrosoftSession() {
   if (!account) throw Error('Entre na sua conta Microsoft primeiro.');
   try {
     const xbox = await new Auth('select_account').refresh(account.refresh);
@@ -271,7 +297,9 @@ app.whenReady().then(() => {
       );
     }
   });
-  handle('account:logout', () => {
+  handle('account:logout', async () => {
+    await communityReady;
+    if (community.me) await community.signOut();
     account = null;
     sessionAccount = null;
     const file = path.join(root, 'account.enc');
@@ -281,14 +309,19 @@ app.whenReady().then(() => {
   handle('game:launch', () => startGame());
   community = new Community(root, safeStorage, communityEvent);
   const connectCommunity = async () => {
-    if (community.me || settings.mode !== 'microsoft' || !account) return community.me;
+    if (settings.mode !== 'microsoft' || !account) return community.me;
+    if (community.me?.mcUuid === account.id) return community.me;
+    if (community.me) await community.signOut();
     return community.signIn((await microsoftSession()).accessToken);
   };
   const communityReady = community
     .restore()
     .catch(() => null)
     .then((me) => me || connectCommunity().catch(() => null));
-  setInterval(gameActivity, 5e3);
+  setInterval(gameActivity, 5e3).unref();
+  discord.configure(settings);
+  gameActivity();
+  handle('discord:state', () => discord.state());
   const needCommunity = () => {
     if (!community.me) throw Error('Entre na comunidade primeiro.');
   };
@@ -305,8 +338,12 @@ app.whenReady().then(() => {
   handle('community:messages', (id) => (needCommunity(), community.messages(String(id))));
   handle('community:send', (id, body) => (needCommunity(), community.send(String(id), body)));
   handle('community:join', (server) => startGame(String(server || '')));
-  handle('optifine:install', () => installOptifine());
+  handle('optifine:install', () => {
+    if (busy || runtime.child) throw Error('Feche o jogo antes de alterar o OptiFine.');
+    return installOptifine();
+  });
   handle('optifine:remove', () => {
+    if (busy || runtime.child) throw Error('Feche o jogo antes de alterar o OptiFine.');
     const f = optifine();
     if (f) fs.unlinkSync(path.join(modsDir, f));
     return null;
@@ -364,13 +401,15 @@ app.whenReady().then(() => {
   handle('app:logs', async () => {
     const file = path.join(root, 'logs/game.log');
     if (!fs.existsSync(file)) return 'Nenhuma partida iniciada ainda.';
-    return fs.readFileSync(file, 'utf8').slice(-16e3);
+    return readTail(file);
   });
   handle('window:minimize', () => win.minimize());
   win.loadFile(ui);
 });
 let leaving = false;
 app.on('before-quit', (event) => {
+  discord.stop();
+  community?.stop();
   if (leaving || !community?.me) return;
   event.preventDefault();
   leaving = true;

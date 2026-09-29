@@ -6,6 +6,14 @@ async function call(channel, ...args) {
 }
 contextBridge.exposeInMainWorld('antagon', {
   platform: process.platform,
+  discord: {
+    state: () => call('discord:state'),
+    onState: (fn) => {
+      const listener = (_, state) => fn(state);
+      ipcRenderer.on('discord:state', listener);
+      return () => ipcRenderer.removeListener('discord:state', listener);
+    },
+  },
   checkUpdate: () => call('update:check'),
   installUpdate: () => call('update:install'),
   community: {
