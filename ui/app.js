@@ -87,11 +87,12 @@ $('#logout-microsoft').onclick = async () => {
 };
 function updateState(state) {
   document.body.dataset.phase = state.phase;
-  const working = ['preparing', 'launching', 'running'].includes(state.phase);
+  const working = ['preparing', 'launching', 'running', 'updating'].includes(state.phase);
   $('#launch-status').textContent = state.message;
   $('#launch').disabled = working;
   $('#launch').textContent = state.phase === 'running' ? 'NO JOGO' : working ? 'ABRINDO…' : 'JOGAR';
-  $('#progress-track').style.display = state.phase === 'preparing' ? 'block' : 'none';
+  $('#progress-track').style.display = ['preparing', 'updating'].includes(state.phase) ? 'block' : 'none';
+  $('#update').disabled = working;
   $('#progress-bar').style.width = Math.max(0, Math.min(100, state.percent || 0)) + '%';
 }
 $('#launch').onclick = async () => {
@@ -150,6 +151,13 @@ $('#wallpaper-pick').onclick = async () => {
   }
 };
 $('#wallpaper-reset').onclick = async () => renderWallpaper(await api.resetWallpaper());
+$('#update').onclick = async () => {
+  try {
+    await api.installUpdate();
+  } catch (e) {
+    toast(e.message);
+  }
+};
 $('#open-folder').onclick = async () => {
   if (await api.openFolder()) toast('A pasta será criada ao abrir o jogo pela primeira vez.');
 };
@@ -164,6 +172,11 @@ $('#open-logs').onclick = async () => {
     account = data.account;
     renderProfile();
     $('#version').textContent = data.version;
+    api.checkUpdate().then((update) => {
+      if (!update) return;
+      $('#update').textContent = 'Atualizar para ' + update.version;
+      $('#update').hidden = false;
+    });
     $('#memory').value = settings.memory;
     $('#memory-value').textContent = settings.memory + ' GB';
     $('#fullscreen').checked = settings.fullscreen;

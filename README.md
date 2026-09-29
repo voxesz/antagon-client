@@ -16,6 +16,8 @@ Baixe a versão mais recente em [Releases](https://github.com/voxesz/antagon-cli
 
 O app não é assinado por uma conta paga da Apple ou da Microsoft, por isso os avisos na primeira abertura.
 
+A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao abrir e mostra o botão **Atualizar**.
+
 | Menu no jogo (Shift direito) | Editor de HUD |
 | --- | --- |
 | ![Menu](docs/in-game-menu.png) | ![Editor de HUD](docs/hud-editor.png) |

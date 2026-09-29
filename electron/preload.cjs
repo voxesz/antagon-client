@@ -6,6 +6,8 @@ async function call(channel, ...args) {
 }
 contextBridge.exposeInMainWorld('antagon', {
   platform: process.platform,
+  checkUpdate: () => call('update:check'),
+  installUpdate: () => call('update:install'),
   init: () => call('app:init'),
   saveSettings: (s) => call('settings:save', s),
   login: () => call('account:login'),

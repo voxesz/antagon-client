@@ -66,3 +66,12 @@ test('zip extraction writes files and rejects paths outside the target', async (
   assert.equal(fs.existsSync(path.join(dir, 'escape.txt')), false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+test('updates only move to newer versions', () => {
+  const { newer } = require('../electron/updater.cjs');
+  assert.equal(newer('v0.1.2', '0.1.1'), true);
+  assert.equal(newer('v0.2.0', '0.1.9'), true);
+  assert.equal(newer('v1.0.0', '0.9.9'), true);
+  assert.equal(newer('v0.1.1', '0.1.1'), false);
+  assert.equal(newer('v0.1.0', '0.1.1'), false);
+  assert.equal(newer('v0.10.0', '0.9.0'), true);
+});

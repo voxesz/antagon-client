@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { Auth } = require('msmc');
 const { Runtime } = require('./runtime.cjs');
+const updater = require('./updater.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 app.setName('Antagon Client');
 const root = process.env.ANTAGON_TEST_ROOT || path.join(app.getPath('appData'), 'Antagon Client');
@@ -281,6 +282,29 @@ app.whenReady().then(() => {
   handle('wallpaper:reset', () => {
     clearWallpaper();
     return null;
+  });
+  let update = null;
+  handle('update:check', async () => {
+    if (!app.isPackaged) return null;
+    update = await updater.check(app.getVersion()).catch(() => null);
+    return update && { version: update.version };
+  });
+  handle('update:install', async () => {
+    if (!update) throw Error('Nenhuma atualização disponível.');
+    if (busy || runtime.child) throw Error('Feche o jogo antes de atualizar.');
+    busy = true;
+    try {
+      await updater.install(update, (percent) =>
+        emit({ phase: 'updating', message: `Baixando a versão ${update.version}`, percent }),
+      );
+      emit({ phase: 'updating', message: 'Reiniciando', percent: 100 });
+      app.quit();
+    } catch (error) {
+      emit({ phase: 'error', message: error.message });
+      throw error;
+    } finally {
+      busy = false;
+    }
   });
   handle('app:folder', () => shell.openPath(path.join(root, 'minecraft')));
   handle('app:logs', async () => {
