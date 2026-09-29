@@ -163,6 +163,7 @@ $('#open-logs').onclick = async () => {
     settings = data.settings;
     account = data.account;
     renderProfile();
+    $('#version').textContent = data.version;
     $('#memory').value = settings.memory;
     $('#memory-value').textContent = settings.memory + ' GB';
     $('#fullscreen').checked = settings.fullscreen;
