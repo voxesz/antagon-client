@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none';"
+    />
+    <title>Antagon Client</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="../assets/g-light.svg" alt="" /><img
+          class="wordmark"
+          src="../assets/wordmark-light.svg"
+          alt="Antagon"
+        />
+      </div>
+      <nav>
+        <button class="tab active" data-view="play">Jogar</button
+        ><button class="tab" data-view="settings">Configurações</button>
+      </nav>
+      <button class="account" id="profile-open">
+        <span class="avatar" id="avatar">P</span
+        ><span><b id="profile-name">Player</b><small id="profile-mode">Offline</small></span>
+      </button>
+    </header>
+
+    <main>
+      <section id="view-play" class="view active">
+        <canvas id="map" aria-hidden="true"></canvas>
+        <div class="shade"></div>
+        <div class="play-panel">
+          <div class="version"><b>Minecraft 1.8.9</b><small id="install-state">Forge</small></div>
+          <div class="status">
+            <span id="launch-status">Pronto</span>
+            <div id="progress-track"><i id="progress-bar"></i></div>
+          </div>
+          <button class="play" id="launch">JOGAR</button>
+        </div>
+        <p class="hint">Mods e HUD: aperte <kbd>Shift direito</kbd> dentro do jogo · <kbd>F8</kbd> oculta o HUD</p>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="settings">
+          <h2>Jogo</h2>
+          <div class="row">
+            <label for="memory">Memória</label>
+            <div class="control">
+              <input type="range" id="memory" min="2" max="8" step="1" value="3" /><output id="memory-value"
+                >3 GB</output
+              >
+            </div>
+          </div>
+          <div class="row">
+            <label for="fullscreen">Tela cheia</label
+            ><label class="switch"><input id="fullscreen" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <label for="pack-toggle">Antagon Pack</label
+            ><label class="switch"><input id="pack-toggle" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <span>OptiFine<small id="optifine-state">Não instalado</small></span>
+            <div class="control">
+              <button class="secondary" id="optifine-site">Baixar</button
+              ><button class="secondary" id="optifine-install">Instalar</button
+              ><button class="secondary" id="optifine-remove" hidden>Remover</button>
+            </div>
+          </div>
+          <div class="row">
+            <span>Plano de fundo<small id="wallpaper-state">Padrão</small></span>
+            <div class="control">
+              <button class="secondary" id="wallpaper-pick">Escolher imagem</button
+              ><button class="secondary" id="wallpaper-reset" hidden>Usar padrão</button>
+            </div>
+          </div>
+          <h2>Arquivos</h2>
+          <div class="row"><span>Pasta do jogo</span><button class="secondary" id="open-folder">Abrir</button></div>
+          <div class="row">
+            <span>Log da última partida</span><button class="secondary" id="open-logs">Ver log</button>
+          </div>
+          <p class="about">Antagon Client 0.1.0 · Não afiliado à Mojang ou à Microsoft</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="account-dialog">
+      <div class="dialog-head">
+        <h2>Conta</h2>
+        <button class="close" data-close="account-dialog" aria-label="Fechar">×</button>
+      </div>
+      <div class="segmented">
+        <button class="active" data-account-mode="offline">Offline</button
+        ><button data-account-mode="microsoft">Microsoft</button>
+      </div>
+      <div id="offline-form">
+        <label for="nickname">Nick</label
+        ><input id="nickname" maxlength="16" autocomplete="off" spellcheck="false" placeholder="SeuNick" /><button
+          class="primary"
+          id="save-nick"
+        >
+          Salvar
+        </button>
+      </div>
+      <div id="microsoft-form" hidden>
+        <div id="connected-account"></div>
+        <button class="primary" id="login-microsoft">Entrar com Microsoft</button
+        ><button class="secondary" id="logout-microsoft" hidden>Desconectar</button>
+      </div>
+      <p id="account-error" class="error" role="alert"></p>
+    </dialog>
+    <dialog id="logs-dialog" class="wide">
+      <div class="dialog-head">
+        <h2>Log</h2>
+        <button class="close" data-close="logs-dialog" aria-label="Fechar">×</button>
+      </div>
+      <pre id="logs-text"></pre>
+    </dialog>
+    <div id="toast" role="status"></div>
+    <script src="wallpaper.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+release/
+build/
+runtime-test/
+*.log
+.DS_Store
+assets/antagon-hud-0.1.0.jar
+assets/Antagon Pack 8x.zip
