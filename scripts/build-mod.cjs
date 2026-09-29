@@ -81,6 +81,7 @@ async function main() {
   ]);
   const resources = path.join(classes, 'assets/antagon');
   fs.mkdirSync(resources, { recursive: true });
+  fs.cpSync(path.join(source, 'resources'), classes, { recursive: true });
   fs.copyFileSync(path.join(root, 'assets/PixelifySans.ttf'), path.join(resources, 'PixelifySans.ttf'));
   fs.copyFileSync(path.join(root, 'assets/PixelifySans-LICENSE.txt'), path.join(resources, 'FONT-LICENSE.txt'));
   fs.writeFileSync(path.join(classes, 'mcmod.info'), JSON.stringify(MOD_INFO));

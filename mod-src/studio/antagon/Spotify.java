@@ -2,10 +2,14 @@ package studio.antagon;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,9 +27,10 @@ final class Spotify {
             Pattern.compile(
                     "https://(?:open\\.spotify\\.com/socialsession/([A-Za-z0-9]+)|spotify\\.link/([A-Za-z0-9]+))");
 
-    private static volatile String windowTitle = "off";
-    private static volatile String lastTitle = "", lastArtist = "";
+    private static final List<String> STATES = Arrays.asList("off", "stopped", "playing", "paused");
+    private static volatile String[] windowsStatus = {"off"};
     private static Process watcher;
+    private static File commandFile, artDir;
 
     private Spotify() {}
 
@@ -70,16 +75,13 @@ final class Spotify {
                             "end if",
                             "return \"off\"")
                     .split("\\|~\\|");
-        watchWindow();
-        String title = windowTitle;
-        if (title.equals("off")) return new String[] {"off"};
-        int dash = title.indexOf(" - ");
-        if (dash > 0) {
-            lastArtist = title.substring(0, dash);
-            lastTitle = title.substring(dash + 3);
-            return new String[] {"playing", lastTitle, lastArtist, "", "0", "0", "-1"};
-        }
-        return new String[] {"paused", lastTitle, lastArtist, "", "0", "0", "-1"};
+        watchMediaSession();
+        return windowsStatus;
+    }
+
+    static boolean isArt(String path) {
+        File dir = artDir;
+        return dir != null && path.startsWith(dir.getPath() + File.separator);
     }
 
     static void play(String uri) {
@@ -99,24 +101,23 @@ final class Spotify {
     }
 
     static void playPause() {
-        command("playpause", 179);
+        command("playpause", "playpause");
     }
 
     static void next() {
-        command("next track", 176);
+        command("next track", "next");
     }
 
     static void previous() {
-        command("previous track", 177);
+        command("previous track", "previous");
     }
 
     static void pause(boolean playing) {
-        if (MAC) command("pause", 0);
-        else if (playing) command("", 179);
+        if (MAC || playing) command("pause", "pause");
     }
 
     static void volume(int value) {
-        if (MAC) command("set sound volume to " + Math.max(0, Math.min(100, value)), 0);
+        if (MAC) command("set sound volume to " + Math.max(0, Math.min(100, value)), null);
     }
 
     static float number(String s) {
@@ -127,49 +128,55 @@ final class Spotify {
         }
     }
 
-    private static void command(String appleScript, int mediaKey) {
-        if (MAC)
+    private static void command(String appleScript, String windowsCommand) {
+        if (MAC) {
             async(() -> osa(RUNNING, "tell application \"Spotify\" to " + appleScript, "end if"));
-        else
-            async(
-                    () ->
-                            run(
-                                    "powershell",
-                                    "-NoProfile",
-                                    "-NonInteractive",
-                                    "-Command",
-                                    "(New-Object -ComObject WScript.Shell).SendKeys([char]"
-                                            + mediaKey
-                                            + ")"));
+            return;
+        }
+        if (windowsCommand == null) return;
+        watchMediaSession();
+        try {
+            Files.write(commandFile.toPath(), windowsCommand.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+        }
     }
 
-    private static synchronized void watchWindow() {
+    private static synchronized void watchMediaSession() {
         if (watcher != null) return;
-        String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
-        String script =
-                "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-                        + "while(Get-Process -Id "
-                        + pid
-                        + " -EA 0){$p=Get-Process Spotify -EA"
-                        + " 0;if(!$p){'off'}else{$t=($p|?{$_.MainWindowTitle}|select -First"
-                        + " 1).MainWindowTitle;if($t){$t}else{'paused'}};Start-Sleep 1}";
         try {
+            artDir = Files.createTempDirectory("antagon-radio").toFile();
+            commandFile = new File(artDir, "command.txt");
+            File script = new File(artDir, "radio.ps1");
+            try (InputStream in =
+                    Spotify.class.getResourceAsStream("/assets/antagon/radio-windows.ps1")) {
+                Files.copy(in, script.toPath());
+            }
+            String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
             watcher =
                     new ProcessBuilder(
                                     "powershell",
                                     "-NoProfile",
                                     "-NonInteractive",
-                                    "-Command",
-                                    script)
+                                    "-ExecutionPolicy",
+                                    "Bypass",
+                                    "-File",
+                                    script.getPath(),
+                                    pid,
+                                    commandFile.getPath(),
+                                    artDir.getPath())
                             .redirectErrorStream(true)
                             .start();
             final BufferedReader in =
-                    new BufferedReader(new InputStreamReader(watcher.getInputStream(), "UTF-8"));
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    watcher.getInputStream(), StandardCharsets.UTF_8));
             async(
                     () -> {
                         try {
-                            for (String line; (line = in.readLine()) != null; )
-                                windowTitle = line.trim();
+                            for (String line; (line = in.readLine()) != null; ) {
+                                String[] status = line.trim().split("\\|~\\|");
+                                if (STATES.contains(status[0])) windowsStatus = status;
+                            }
                         } catch (Exception ignored) {
                         }
                     });

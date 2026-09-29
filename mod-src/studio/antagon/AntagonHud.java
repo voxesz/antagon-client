@@ -62,7 +62,8 @@ public class AntagonHud {
         "reach",
         "combo",
         "hitbox",
-        "hitcolor"
+        "hitcolor",
+        "autotext"
     };
     private static final String[] NAMES = {
         "FPS",
@@ -81,14 +82,17 @@ public class AntagonHud {
         "REACH DISPLAY",
         "COMBO COUNTER",
         "HITBOX",
-        "HIT COLOR"
+        "HIT COLOR",
+        "AUTO TEXT"
     };
     private static final boolean[] DEFAULT_ON = {
         true, true, true, false, true, false, false, false, false, false, false, false, false,
-        false, false, false, false
+        false, false, false, false, false
     };
+    private static final int AUTOTEXT_SLOTS = 6;
+    private long lastAutoText = 0;
     private static final String COLOR_VALUES = "branco,vermelho,amarelo,verde,ciano";
-    private static final String[] SIZE = {"size", "TAMANHO", "50%,75%,100%,125%,150%,200%", "100%"};
+    private static final String[] SIZE = {"size", "TAMANHO", "range:50:200:5:%", "100%"};
     private static final String[] COLOR_NAMES = {"branco", "vermelho", "amarelo", "verde", "ciano"};
     private static final int[] COLORS = {
         0xFFF0EEE8, 0xFFEE1515, 0xFFFFD23F, 0xFF7BD66A, 0xFF5FD4E8
@@ -107,7 +111,7 @@ public class AntagonHud {
     private final int[] widths = new int[256];
     private static final int CELL = 32, ATLAS = 512;
     private final Map<String, float[]> bounds = new HashMap<String, float[]>();
-    private float hudScale = 1;
+    private float hudScale = 1, hudWidth, hudHeight;
     private Menu menu;
     private boolean sprintToggled = false, sprintWas = false;
     private boolean smokeConfig = false;
@@ -200,18 +204,18 @@ public class AntagonHud {
             return new String[][] {
                 {"style", "ESTILO", "cruz,ponto,cruz + ponto"},
                 {"color", "COR", COLOR_VALUES},
-                {"size", "TAMANHO", "4,6,8,10,12,16", "8"},
-                {"thick", "ESPESSURA", "1,2,3,4", "2"},
-                {"gap", "ESPAÇO", "0,2,4,6", "2"},
+                {"size", "TAMANHO", "range:2:24:1:", "8"},
+                {"thick", "ESPESSURA", "range:1:6:1:", "2"},
+                {"gap", "ESPAÇO", "range:0:12:1:", "2"},
                 {"outline", "CONTORNO", "on,off"}
             };
         if (mod.equals("chat"))
             return new String[][] {
                 {"time", "HORÁRIO", "off,on"},
                 {"stack", "EMPILHAR REPETIDAS", "on,off"},
-                {"scale", "TAMANHO DO TEXTO", "100%,75%,50%"},
-                {"width", "LARGURA", "100%,75%,50%"},
-                {"lines", "LINHAS VISÍVEIS", "10,5,15,20"}
+                {"scale", "TAMANHO DO TEXTO", "range:25:100:5:%", "100%"},
+                {"width", "LARGURA", "range:25:100:5:%", "100%"},
+                {"lines", "LINHAS VISÍVEIS", "range:3:20:1:", "10"}
             };
         if (mod.equals("radio")) {
             List<String[]> radio =
@@ -235,15 +239,21 @@ public class AntagonHud {
         if (mod.equals("hitbox"))
             return new String[][] {
                 {"color", "COR", COLOR_VALUES},
-                {"thick", "ESPESSURA", "1,2,3,4", "2"},
+                {"thick", "ESPESSURA", "range:1:6:1:", "2"},
                 {"players", "SÓ JOGADORES", "off,on"},
                 {"margin", "HITBOX REAL (+0.1)", "on,off"}
             };
         if (mod.equals("hitcolor"))
             return new String[][] {
                 {"color", "COR", COLOR_VALUES, "vermelho"},
-                {"alpha", "INTENSIDADE", "15%,30%,45%,60%", "30%"}
+                {"alpha", "INTENSIDADE", "range:5:80:5:%", "30%"}
             };
+        if (mod.equals("autotext")) {
+            String[][] slots = new String[AUTOTEXT_SLOTS][];
+            for (int i = 0; i < AUTOTEXT_SLOTS; i++)
+                slots[i] = new String[] {"" + (i + 1), "", "autotext"};
+            return slots;
+        }
         if (mod.equals("notitles"))
             return new String[][] {{"actionbar", "BARRA DE AÇÃO", "off,on"}};
         if (mod.equals("keys"))
@@ -291,7 +301,10 @@ public class AntagonHud {
     }
 
     private int keyOf(String mod, String key) {
-        String v = opt(mod, key);
+        return codeOf(opt(mod, key));
+    }
+
+    private static int codeOf(String v) {
         if (v.equals("ALT")) return Keyboard.KEY_LMENU;
         if (v.matches("MOUSE\\d{1,2}")) return Integer.parseInt(v.substring(5)) - 101;
         int code = Keyboard.getKeyIndex(v);
@@ -311,7 +324,24 @@ public class AntagonHud {
         return code < -1 ? Mouse.isButtonDown(code + 100) : code > 0 && Keyboard.isKeyDown(code);
     }
 
-    private void radioKey(int code) {
+    private void boundKey(int code) {
+        if (enabled("autotext"))
+            for (int i = 1; i <= AUTOTEXT_SLOTS; i++) {
+                String text = config.getProperty("autotext." + i + ".text", "").trim();
+                if (!text.isEmpty()
+                        && code == codeOf(config.getProperty("autotext." + i + ".key", "NENHUMA"))
+                        && System.currentTimeMillis() - lastAutoText > 500) {
+                    lastAutoText = System.currentTimeMillis();
+                    try {
+                        call(
+                                field(mc, "field_71439_g", "thePlayer"),
+                                new String[] {"func_71165_d", "sendChatMessage"},
+                                text);
+                    } catch (Exception e) {
+                        report(e);
+                    }
+                }
+            }
         if (!enabled("radio")) return;
         if (code == keyOf("radio", "prev")) Spotify.previous();
         else if (code == keyOf("radio", "pause")) radioToggle();
@@ -321,7 +351,7 @@ public class AntagonHud {
     @SubscribeEvent
     public void mouse(MouseEvent event) {
         if (!event.buttonstate) return;
-        if (event.button >= 0) radioKey(event.button - 100);
+        if (event.button >= 0) boundKey(event.button - 100);
         if (event.button == 0) left.add(System.currentTimeMillis());
         if (event.button == 1) right.add(System.currentTimeMillis());
     }
@@ -334,7 +364,7 @@ public class AntagonHud {
             openMenu();
             return;
         }
-        radioKey(k);
+        boundKey(k);
     }
 
     private void openMenu() {
@@ -608,11 +638,14 @@ public class AntagonHud {
 
     private void loadArt(String url) {
         try {
-            if (!url.startsWith("https://")) {
+            BufferedImage src =
+                    url.startsWith("https://")
+                            ? ImageIO.read(new URL(url))
+                            : Spotify.isArt(url) ? ImageIO.read(new File(url)) : null;
+            if (src == null) {
                 artPending = null;
                 return;
             }
-            BufferedImage src = ImageIO.read(new URL(url));
             if (src == null) return;
             BufferedImage img = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = img.createGraphics();
@@ -1017,13 +1050,14 @@ public class AntagonHud {
                     shot("antagon-smoke.png");
                     break;
                 case 190:
+                    smokeConfig = true;
                     openMenu();
                     break;
                 case 210:
                     shot("antagon-menu.png");
                     break;
                 case 212:
-                    if (menu != null) menu.page = "cps";
+                    if (menu != null) menu.page = "crosshair";
                     break;
                 case 230:
                     shot("antagon-options.png");
@@ -1033,6 +1067,12 @@ public class AntagonHud {
                         menu.page = null;
                         menu.editing = true;
                     }
+                    break;
+                case 246:
+                    menu.drag = "fps";
+                    menu.dx = 0;
+                    menu.dy = 0;
+                    menu.func_146273_a(203, 101, 0, 0);
                     break;
                 case 250:
                     shot("antagon-edit.png");
@@ -1055,6 +1095,20 @@ public class AntagonHud {
                     break;
                 case 300:
                     shot("antagon-after-perspective.png");
+                    break;
+                case 304:
+                    config.setProperty("autotext", "true");
+                    config.setProperty("autotext.1.text", "Antagon auto text ok");
+                    config.setProperty("autotext.1.key", "MOUSE5");
+                    config.setProperty("autotext.2.text", "/gamemode 1");
+                    boundKey(-96);
+                    openMenu();
+                    menu.page = "autotext";
+                    menu.typing = "2";
+                    break;
+                case 316:
+                    shot("antagon-autotext.png");
+                    menu.close();
                     break;
                 case 320:
                     smokeConfig = true;
@@ -1406,6 +1460,29 @@ public class AntagonHud {
         return new int[] {dw, dh, factor};
     }
 
+    private void drawCrosshair(float cx, float cy, float scale) {
+        int len = Integer.parseInt(opt("crosshair", "size")),
+                t = Integer.parseInt(opt("crosshair", "thick")),
+                gap = Integer.parseInt(opt("crosshair", "gap"));
+        String style = opt("crosshair", "style");
+        List<float[]> parts = new ArrayList<float[]>();
+        float half = t / 2;
+        if (!style.equals("ponto")) {
+            parts.add(new float[] {-gap - len - half, -half, len, t});
+            parts.add(new float[] {gap + t - half, -half, len, t});
+            parts.add(new float[] {-half, -gap - len - half, t, len});
+            parts.add(new float[] {-half, gap + t - half, t, len});
+        }
+        if (!style.equals("cruz")) parts.add(new float[] {-half, -half, t, t});
+        GL11.glPushMatrix();
+        GL11.glTranslatef(cx, cy, 0);
+        GL11.glScalef(scale, scale, 1);
+        if (flag("crosshair", "outline"))
+            for (float[] r : parts) rect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, 0xFF000000);
+        for (float[] r : parts) rect(r[0], r[1], r[2], r[3], colorOf(opt("crosshair", "color")));
+        GL11.glPopMatrix();
+    }
+
     @SubscribeEvent
     public void crosshair(RenderGameOverlayEvent.Pre event) {
         if (event.type != RenderGameOverlayEvent.ElementType.CROSSHAIRS || !enabled("crosshair"))
@@ -1418,27 +1495,7 @@ public class AntagonHud {
             int[] g = gui();
             begin(1f / g[2]);
             try {
-                int cx = g[0] / 2,
-                        cy = g[1] / 2,
-                        len = Integer.parseInt(opt("crosshair", "size")),
-                        t = Integer.parseInt(opt("crosshair", "thick")),
-                        gap = Integer.parseInt(opt("crosshair", "gap"));
-                String style = opt("crosshair", "style");
-                boolean lines = !style.equals("ponto"), dot = !style.equals("cruz");
-                List<float[]> parts = new ArrayList<float[]>();
-                float half = t / 2;
-                if (lines) {
-                    parts.add(new float[] {cx - gap - len - half, cy - half, len, t});
-                    parts.add(new float[] {cx + gap + t - half, cy - half, len, t});
-                    parts.add(new float[] {cx - half, cy - gap - len - half, t, len});
-                    parts.add(new float[] {cx - half, cy + gap + t - half, t, len});
-                }
-                if (dot) parts.add(new float[] {cx - half, cy - half, t, t});
-                if (flag("crosshair", "outline"))
-                    for (float[] r : parts)
-                        rect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, 0xFF000000);
-                for (float[] r : parts)
-                    rect(r[0], r[1], r[2], r[3], colorOf(opt("crosshair", "color")));
+                drawCrosshair(g[0] / 2, g[1] / 2, 1);
             } finally {
                 end();
             }
@@ -1458,6 +1515,8 @@ public class AntagonHud {
             float scale = hudScale = Math.max(.7f, Math.min(1.6f, number("scale", 1))),
                     sw = (float) Math.ceil(g[0] / (double) g[2]) / scale,
                     sh = (float) Math.ceil(g[1] / (double) g[2]) / scale;
+            hudWidth = sw;
+            hudHeight = sh;
             bounds.clear();
             try {
                 begin(scale);
@@ -1578,7 +1637,7 @@ public class AntagonHud {
         String page = null, drag = null, resizing = null, notice = "";
         float resizeAnchorX, resizeAnchorY, resizeWidth, resizeHeight, resizeSize;
         int corner;
-        String binding = null;
+        String binding = null, typing = null;
         boolean volumeDrag = false;
         long volumeSent = 0;
         float ms = 1;
@@ -1626,6 +1685,26 @@ public class AntagonHud {
 
         @Override
         protected void func_73869_a(char c, int key) {
+            if (typing != null) {
+                String property = "autotext." + typing + ".text",
+                        text = config.getProperty(property, "");
+                boolean paste =
+                        key == Keyboard.KEY_V
+                                && (Keyboard.isKeyDown(Keyboard.KEY_LMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL));
+                if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_ESCAPE) typing = null;
+                else if (key == Keyboard.KEY_BACK) {
+                    if (!text.isEmpty())
+                        config.setProperty(property, text.substring(0, text.length() - 1));
+                } else if (paste)
+                    config.setProperty(property, chatText(text + Spotify.clipboard()));
+                else if (c >= 32 && c != 127 && c != 167)
+                    config.setProperty(property, chatText(text + c));
+                if (typing == null) save();
+                return;
+            }
             if (binding != null) {
                 if (key == Keyboard.KEY_BACK || key == Keyboard.KEY_DELETE)
                     config.setProperty(binding, "NENHUMA");
@@ -1681,8 +1760,60 @@ public class AntagonHud {
             }
         }
 
+        static final float SLIDER = 150;
+        String rangeDrag = null;
+        static final float GRID = 8, SNAP = 4, GAP = 2;
+        float guideX = -1, guideY = -1;
+
+        private float top() {
+            return y0 + 32 + (page != null && page.equals("crosshair") ? 72 : 0);
+        }
+
+        private float sliderX() {
+            return x0 + PW - 200;
+        }
+
+        private void slider(float y, float t) {
+            float sx = sliderX();
+            rect(sx, y + 10, SLIDER, 2, 0xFF4A4A4A);
+            rect(sx, y + 10, SLIDER * t, 2, RED);
+            rect(sx + SLIDER * t - 3, y + 6, 6, 10, WHITE);
+        }
+
+        private float[] range(String[] o) {
+            String[] r = o[2].split(":", -1);
+            return new float[] {
+                Float.parseFloat(r[1]), Float.parseFloat(r[2]), Float.parseFloat(r[3])
+            };
+        }
+
+        private void setRange(String[] o, float mx) {
+            float[] r = range(o);
+            float t = Math.max(0, Math.min(1, (mx - sliderX()) / SLIDER));
+            float v = r[0] + Math.round(t * (r[1] - r[0]) / r[2]) * r[2];
+            String unit = o[2].split(":", -1)[4];
+            config.setProperty(page + "." + o[0], (v == (int) v ? "" + (int) v : "" + v) + unit);
+        }
+
+        private void drawCrosshairPreview() {
+            float x = x0 + 8, y = y0 + 32, w = PW - 16;
+            rect(x, y, w, 34, 0xFF6E9BD3);
+            rect(x, y + 34, w, 30, 0xFF4F7A33);
+            try {
+                float px = 1 / (gui()[2] * ms);
+                drawCrosshair(x + w * .3f, y + 32, px);
+                drawCrosshair(x + w * .7f, y + 32, px * 4);
+                text("REAL", x + 6, y + 3, WHITE);
+                text("ZOOM 4X", x + w - 6 - width("ZOOM 4X"), y + 3, WHITE);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
         private int ph() {
-            return page == null ? PH : Math.max(160, 40 + options(page).length * 26);
+            return page == null
+                    ? PH
+                    : Math.max(160, (int) (top() - y0) + 8 + options(page).length * 26);
         }
 
         private float[] card(int i) {
@@ -1728,9 +1859,10 @@ public class AntagonHud {
         private void drawOptions(int mx, int my) {
             button("<", x0 + 8, y0 + 4, 18, 16, mx, my, false);
             text(NAMES[Arrays.asList(MODS).indexOf(page)], x0 + 34, y0 + 5, WHITE);
+            if (page.equals("crosshair")) drawCrosshairPreview();
             String[][] opts = options(page);
             for (int k = 0; k < opts.length; k++) {
-                float ry = y0 + 32 + k * 26;
+                float ry = top() + k * 26;
                 String v = opt(page, opts[k][0]);
                 rect(x0 + 8, ry, PW - 16, 22, 0xFF262626);
                 text(opts[k][1], x0 + 16, ry + 3, WHITE);
@@ -1754,6 +1886,33 @@ public class AntagonHud {
                             my,
                             false);
                     button(">>", x0 + PW - 40, ry + 3, 24, 16, mx, my, false);
+                } else if (opts[k][2].equals("autotext")) {
+                    String slot = opts[k][0],
+                            text = config.getProperty("autotext." + slot + ".text", "");
+                    String key = config.getProperty("autotext." + slot + ".key", "NENHUMA");
+                    boolean active = slot.equals(typing),
+                            waiting = ("autotext." + slot + ".key").equals(binding);
+                    float fw = PW - 136;
+                    rect(x0 + 14, ry + 3, fw, 16, active ? 0xFF3A1414 : 0xFF1A1A1A);
+                    if (active) outline(x0 + 14, ry + 3, fw, 16, RED);
+                    String shown = text.isEmpty() && !active ? "/comando ou mensagem" : text;
+                    shown =
+                            fit(
+                                    shown
+                                            + (active && System.currentTimeMillis() / 500 % 2 == 0
+                                                    ? "_"
+                                                    : ""),
+                                    fw - 10);
+                    text(shown, x0 + 19, ry + 3, text.isEmpty() && !active ? GRAY : WHITE);
+                    button(
+                            waiting ? "APERTE..." : key.replace("MOUSE", "MOUSE "),
+                            x0 + PW - 108,
+                            ry + 3,
+                            92,
+                            16,
+                            mx,
+                            my,
+                            waiting);
                 } else if (opts[k][2].equals("key")) {
                     boolean waiting = (page + "." + opts[k][0]).equals(binding);
                     button(
@@ -1765,14 +1924,14 @@ public class AntagonHud {
                             mx,
                             my,
                             waiting);
+                } else if (opts[k][2].startsWith("range:")) {
+                    float[] r = range(opts[k]);
+                    slider(ry, (Spotify.number(v.replace("%", "")) - r[0]) / (r[1] - r[0]));
+                    text(v, x0 + PW - 16 - width(v), ry + 3, WHITE);
                 } else if (opts[k][2].equals("slider")) {
                     int vol = radioVolume;
-                    float sx = x0 + PW - 160;
-                    rect(sx, ry + 10, 120, 2, 0xFF4A4A4A);
-                    if (vol >= 0) {
-                        rect(sx, ry + 10, 120 * vol / 100f, 2, RED);
-                        rect(sx + 120 * vol / 100f - 3, ry + 6, 6, 10, WHITE);
-                    }
+                    if (vol >= 0) slider(ry, vol / 100f);
+                    else rect(sliderX(), ry + 10, SLIDER, 2, 0xFF4A4A4A);
                     String label = vol < 0 ? "--" : "" + vol;
                     text(label, x0 + PW - 16 - width(label), ry + 3, vol < 0 ? GRAY : WHITE);
                 } else if (v.equals("on") || v.equals("off"))
@@ -1788,6 +1947,12 @@ public class AntagonHud {
         private void drawEdit(int mx, int my, int w, int h) {
             rect(0, 0, w, h, 0x33000000);
             float s = hudScale;
+            if (drag != null) {
+                for (float gx = 0; gx < w; gx += GRID * s) rect(gx, 0, 1, h, 0x30FFFFFF);
+                for (float gy = 0; gy < h; gy += GRID * s) rect(0, gy, w, 1, 0x30FFFFFF);
+                if (guideX >= 0) rect(guideX * s, 0, 1, h, 0xCCEE1515);
+                if (guideY >= 0) rect(0, guideY * s, w, 1, 0xCCEE1515);
+            }
             for (Map.Entry<String, float[]> e : bounds.entrySet()) {
                 float[] b = e.getValue();
                 boolean active = e.getKey().equals(drag) || e.getKey().equals(resizing);
@@ -1852,7 +2017,7 @@ public class AntagonHud {
         }
 
         private void setVolume(float mx, boolean last) {
-            int v = Math.max(0, Math.min(100, Math.round((mx - (x0 + PW - 160)) / 120f * 100)));
+            int v = Math.max(0, Math.min(100, Math.round((mx - sliderX()) / SLIDER * 100)));
             radioVolume = v;
             volumeSentAt = System.currentTimeMillis();
             if (last || System.currentTimeMillis() - volumeSent > 150) {
@@ -1883,18 +2048,6 @@ public class AntagonHud {
         }
 
         private void cycle(String mod, String[] o) {
-            if (o == SIZE) {
-                float now = percent(mod, "size");
-                String next = null;
-                for (String v : o[2].split(","))
-                    if (Float.parseFloat(v.replace("%", "")) / 100f > now + .001f) {
-                        next = v;
-                        break;
-                    }
-                config.setProperty(mod + ".size", next == null ? o[2].split(",")[0] : next);
-                save();
-                return;
-            }
             List<String> values = Arrays.asList(o[2].split(","));
             config.setProperty(
                     mod + "." + o[0],
@@ -1910,6 +2063,10 @@ public class AntagonHud {
 
         @Override
         protected void func_73864_a(int mx, int my, int button) {
+            if (typing != null) {
+                typing = null;
+                save();
+            }
             if (binding != null) {
                 if (button >= 2) config.setProperty(binding, "MOUSE" + (button + 1));
                 binding = null;
@@ -1999,9 +2156,15 @@ public class AntagonHud {
                 }
                 String[][] opts = options(page);
                 for (int k = 0; k < opts.length; k++) {
-                    float ry = y0 + 32 + k * 26;
+                    float ry = top() + k * 26;
                     if (opts[k][0].equals("playlist")) {
                         if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16)) pastePlaylist();
+                        continue;
+                    }
+                    if (opts[k][2].equals("autotext")) {
+                        if (in(mx, my, x0 + 14, ry + 3, PW - 136, 16)) typing = opts[k][0];
+                        else if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16))
+                            binding = "autotext." + opts[k][0] + ".key";
                         continue;
                     }
                     if (opts[k][2].equals("key")) {
@@ -2009,8 +2172,15 @@ public class AntagonHud {
                             binding = page + "." + opts[k][0];
                         continue;
                     }
+                    if (opts[k][2].startsWith("range:")) {
+                        if (in(mx, my, sliderX() - 6, ry, SLIDER + 12, 22)) {
+                            rangeDrag = opts[k][0];
+                            setRange(opts[k], mx);
+                        }
+                        continue;
+                    }
                     if (opts[k][2].equals("slider")) {
-                        if (in(mx, my, x0 + PW - 164, ry, 128, 22)) {
+                        if (in(mx, my, sliderX() - 6, ry, SLIDER + 12, 22)) {
                             volumeDrag = true;
                             setVolume(mx, false);
                         }
@@ -2028,6 +2198,11 @@ public class AntagonHud {
                     }
                 }
             }
+        }
+
+        private String chatText(String text) {
+            String clean = text.replaceAll("[\\p{Cntrl}\u00a7]", "");
+            return clean.length() > 100 ? clean.substring(0, 100) : clean;
         }
 
         private float setSize(String key, float size) {
@@ -2049,6 +2224,8 @@ public class AntagonHud {
                 mx = (int) (mx / ms);
                 my = (int) (my / ms);
                 if (volumeDrag) setVolume(mx, false);
+                if (rangeDrag != null)
+                    for (String[] o : options(page)) if (o[0].equals(rangeDrag)) setRange(o, mx);
                 return;
             }
             if (resizing != null) {
@@ -2066,8 +2243,36 @@ public class AntagonHud {
                 return;
             }
             if (drag == null) return;
-            config.setProperty(drag + ".x", "" + Math.max(0, Math.round(mx / hudScale - dx)));
-            config.setProperty(drag + ".y", "" + Math.max(0, Math.round(my / hudScale - dy)));
+            float[] b = bounds.get(drag);
+            float w = b == null ? 0 : b[2], h = b == null ? 0 : b[3];
+            float[] x = snap(mx / hudScale - dx, w, hudWidth, 0),
+                    y = snap(my / hudScale - dy, h, hudHeight, 1);
+            guideX = x[1];
+            guideY = y[1];
+            config.setProperty(drag + ".x", "" + Math.max(0, Math.round(x[0])));
+            config.setProperty(drag + ".y", "" + Math.max(0, Math.round(y[0])));
+        }
+
+        private float[] snap(float pos, float size, float screen, int axis) {
+            List<float[]> targets = new ArrayList<float[]>();
+            targets.add(new float[] {0, 0});
+            targets.add(new float[] {screen - size, screen});
+            targets.add(new float[] {screen / 2 - size / 2, screen / 2});
+            for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                if (e.getKey().equals(drag)) continue;
+                float start = e.getValue()[axis], end = start + e.getValue()[axis + 2];
+                targets.add(new float[] {start, start});
+                targets.add(new float[] {end - size, end});
+                targets.add(new float[] {end + GAP, end + GAP});
+                targets.add(new float[] {start - size - GAP, start - GAP});
+                targets.add(new float[] {(start + end) / 2 - size / 2, (start + end) / 2});
+            }
+            float[] best = null;
+            for (float[] t : targets)
+                if (Math.abs(pos - t[0]) < SNAP
+                        && (best == null || Math.abs(pos - t[0]) < Math.abs(pos - best[0])))
+                    best = t;
+            return best != null ? best : new float[] {Math.round(pos / GRID) * GRID, -1};
         }
 
         @Override
@@ -2076,6 +2281,11 @@ public class AntagonHud {
                 volumeDrag = false;
                 setVolume(mx / ms, true);
             }
+            if (rangeDrag != null) {
+                rangeDrag = null;
+                save();
+            }
+            guideX = guideY = -1;
             if (drag != null || resizing != null) {
                 drag = null;
                 resizing = null;
