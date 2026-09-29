@@ -68,8 +68,7 @@ final class ModuleRegistry {
         "Quadros por segundo", "Cliques por segundo", "Teclas e cliques na tela",
         "Posição X, Y e Z", "Latência da conexão", "Hora sem sair do jogo",
         "Câmera estável ao levar hit", "Sprint com um toque", "Olhe ao redor livremente",
-        "Formato, cor e tamanho", "Horário e repetidas",
-                "Esconde títulos",
+        "Formato, cor e tamanho", "Horário e repetidas", "Esconde títulos",
         "Spotify no jogo", "Distância do último hit", "Hits seguidos",
         "Limites visuais das entidades", "Cor do efeito de dano", "Atalhos de mensagens",
         "Tamanho, fundo e números", "Remove o bloqueio de clique", "Brilho máximo"

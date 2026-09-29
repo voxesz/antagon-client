@@ -1756,17 +1756,16 @@ public class AntagonHud {
         float x = Math.max(0, Math.min(number("scoreboard.x", sw - w * s - 1), sw - w * s));
         float y = Math.max(0, Math.min(number("scoreboard.y", sh / 2 - h * s / 3), sh - h * s));
         bounds.put("scoreboard", new float[] {x, y, w * s, h * s});
-        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GL11.glPushMatrix();
         GL11.glScalef(hudScale, hudScale, 1);
         GL11.glTranslatef(x, y, 0);
         GL11.glScalef(s, s, 1);
-        GL11.glEnable(GL11.GL_BLEND);
         if (background) {
-            rect(0, 0, w, 10, 0x66000000);
-            rect(0, 10, w, h - 10, 0x50000000);
+            Class<?> gui = Class.forName("net.minecraft.client.gui.Gui");
+            String[] drawRect = {"func_73734_a", "drawRect"};
+            invoke(gui, null, drawRect, 0, 0, (int) w, 10, 0x66000000);
+            invoke(gui, null, drawRect, 0, 10, (int) w, (int) h, 0x50000000);
         }
-        GL11.glColor4f(1, 1, 1, 1);
         drawString(font, title, (int) (w - stringWidth(font, title)) / 2, 1, 0xFFFFFFFF);
         for (int i = 0; i < lines.size(); i++) {
             drawString(font, lines.get(i)[0], 2, 11 + i * 9, 0xFFFFFFFF);
@@ -1779,7 +1778,6 @@ public class AntagonHud {
                         0xFFFFFFFF);
         }
         GL11.glPopMatrix();
-        GL11.glPopAttrib();
     }
 
     private static int stringWidth(Object font, String text) throws Exception {
