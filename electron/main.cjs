@@ -280,7 +280,14 @@ app.whenReady().then(() => {
   });
   handle('game:launch', () => startGame());
   community = new Community(root, safeStorage, communityEvent);
-  const communityReady = community.restore().catch(() => null);
+  const connectCommunity = async () => {
+    if (community.me || settings.mode !== 'microsoft' || !account) return community.me;
+    return community.signIn((await microsoftSession()).accessToken);
+  };
+  const communityReady = community
+    .restore()
+    .catch(() => null)
+    .then((me) => me || connectCommunity().catch(() => null));
   setInterval(gameActivity, 5e3);
   const needCommunity = () => {
     if (!community.me) throw Error('Entre na comunidade primeiro.');
@@ -289,8 +296,7 @@ app.whenReady().then(() => {
   handle('community:login', async () => {
     if (settings.mode !== 'microsoft' || !account)
       throw Error('A comunidade usa sua conta Microsoft. Entre com ela no seu perfil.');
-    const session = await microsoftSession();
-    return community.signIn(session.accessToken);
+    return connectCommunity();
   });
   handle('community:logout', () => community.signOut());
   handle('community:add', (name) => (needCommunity(), community.add(String(name || '').trim())));

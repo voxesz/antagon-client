@@ -72,6 +72,10 @@ $('#login-microsoft').onclick = async () => {
     await persist();
     renderProfile();
     $('#account-dialog').close();
+    community
+      .login()
+      .catch(() => null)
+      .then(refreshCommunity);
   } catch (e) {
     $('#account-error').textContent = e.message;
   } finally {
@@ -218,6 +222,11 @@ const head = (p) =>
 function renderCommunity() {
   const me = people.me;
   $('#community-gate').hidden = !!me;
+  const microsoft = settings?.mode === 'microsoft' && account;
+  $('#community-gate p').textContent = microsoft
+    ? 'Conectando com a sua conta ' + account.name + '…'
+    : 'A comunidade usa a sua conta Microsoft. Entre com ela no seu perfil para adicionar amigos e conversar.';
+  $('#community-login').textContent = microsoft ? 'Tentar de novo' : 'Entrar com Microsoft';
   $('#community').hidden = !me;
   $('#community-account').textContent = me ? 'Conectado como ' + me.name : 'Não conectado';
   $('#community-logout').hidden = !me;
