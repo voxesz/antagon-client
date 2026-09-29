@@ -185,8 +185,9 @@ app.whenReady().then(() => {
     minHeight: 720,
     backgroundColor: '#151515',
     title: 'Antagon Client',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 17 },
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 17 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#191919', symbolColor: '#f0eee8', height: 56 } }),
     icon: path.join(assets, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

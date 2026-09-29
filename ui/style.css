@@ -462,3 +462,7 @@ pre {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+.win32 .topbar {
+  padding: 0 150px 0 20px;
+}

@@ -7,11 +7,28 @@ const { spawn, execFileSync } = require('node:child_process');
 const { unzipSync } = require('fflate');
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
 const FORGE_URL = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/forge-${FORGE_VERSION}-universal.jar`;
+const PLATFORM = process.platform === 'win32' ? 'windows' : 'osx';
 const JAVA = {
-  url: 'https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jre8.0.504-macosx_aarch64.tar.gz',
-  sha256: '2bf60d7d93268a4f37b3ec5e8b710ccab240e7217966e557939d4c39fc72a9cd',
-  directory: 'zulu8.96.0.205-ca-jre8.0.504-macosx_aarch64',
-};
+  'osx-x64': {
+    url: 'https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jre8.0.504-macosx_x64.tar.gz',
+    sha256: '87c82660534472cf7cecb33cb30ec420fd8f863b12c1d5a2cef9970ed990d64f',
+    directory: 'zulu8.96.0.205-ca-jre8.0.504-macosx_x64',
+    executable: 'java',
+  },
+  osx: {
+    url: 'https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jre8.0.504-macosx_aarch64.tar.gz',
+    sha256: '2bf60d7d93268a4f37b3ec5e8b710ccab240e7217966e557939d4c39fc72a9cd',
+    directory: 'zulu8.96.0.205-ca-jre8.0.504-macosx_aarch64',
+    executable: 'java',
+  },
+  windows: {
+    url: 'https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jre8.0.504-win_x64.zip',
+    sha256: 'a4f32724c6d819c20372ac069fefa6e6c0319e1d79ba6ce4ee338d4c7e051a12',
+    directory: 'zulu8.96.0.205-ca-jre8.0.504-win_x64',
+    executable: 'java.exe',
+  },
+}[PLATFORM === 'osx' && process.arch !== 'arm64' ? 'osx-x64' : PLATFORM];
+const NATIVE_FILE = PLATFORM === 'windows' ? /\.dll$/i : /\.(dylib|jnilib)$/;
 const HOSTS = new Set([
   'piston-meta.mojang.com',
   'launchermeta.mojang.com',
@@ -81,16 +98,30 @@ async function download(url, file, hash, algorithm = 'sha1', emit = () => {}) {
     }
   }
 }
-function allowed(lib) {
+function allowed(lib, platform = PLATFORM) {
   if (!lib.rules) return true;
   let ok = false;
   for (const rule of lib.rules) {
-    let match = !rule.os || !rule.os.name || rule.os.name === 'osx';
+    let match = !rule.os || !rule.os.name || rule.os.name === platform;
     if (rule.os?.version) match = match && new RegExp(rule.os.version).test(os.release());
     if (rule.os?.arch) match = match && ['x86_64', 'amd64', 'x64'].includes(rule.os.arch);
     if (match) ok = rule.action === 'allow';
   }
   return ok;
+}
+async function extract(archive, destination) {
+  if (!archive.endsWith('.zip')) {
+    execFileSync('/usr/bin/tar', ['-xzf', archive, '-C', destination], { timeout: 12e4 });
+    return;
+  }
+  const root = path.resolve(destination) + path.sep;
+  for (const [name, data] of Object.entries(unzipSync(await fsp.readFile(archive)))) {
+    const target = path.resolve(destination, name);
+    if (!target.startsWith(root)) throw Error('Arquivo compactado inválido.');
+    if (name.endsWith('/')) continue;
+    await fsp.mkdir(path.dirname(target), { recursive: true });
+    await fsp.writeFile(target, data);
+  }
 }
 function mavenPath(name) {
   const [group, artifact, version, classifier] = name.split(':');
@@ -130,7 +161,7 @@ class Runtime {
       if (depth > 6 || !fs.existsSync(dir)) return null;
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
-        if (e.isFile() && e.name === 'java' && path.basename(dir) === 'bin') return p;
+        if (e.isFile() && e.name === JAVA.executable && path.basename(dir) === 'bin') return p;
         if (e.isDirectory()) {
           const result2 = find(p, depth + 1);
           if (result2) return result2;
@@ -142,9 +173,9 @@ class Runtime {
     if (!java) {
       await fsp.rm(javaRoot, { recursive: true, force: true });
       await fsp.mkdir(javaRoot, { recursive: true });
-      const archive = path.join(javaRoot, 'java8.tar.gz');
+      const archive = path.join(javaRoot, path.basename(JAVA.url));
       await download(JAVA.url, archive, JAVA.sha256, 'sha256', this.emit);
-      execFileSync('/usr/bin/tar', ['-xzf', archive, '-C', javaRoot], { timeout: 12e4 });
+      await extract(archive, javaRoot);
       await fsp.rm(archive, { force: true });
       java = find(path.join(javaRoot, JAVA.directory));
       if (!java) throw Error('Java não foi encontrado após a instalação.');
@@ -195,18 +226,23 @@ class Runtime {
           if (lib.checksums && lib.url && !(await valid(file, hash))) {
             const checksumFile = file + '.sha1';
             if (!fs.existsSync(checksumFile)) {
-              const checksum = (await (await fetchOK(base + relative + '.sha1')).text()).trim().split(/\s/)[0];
-              if (!/^[a-f0-9]{40}$/i.test(checksum)) throw Error('Checksum Maven inválido.');
+              const res = await fetch(checkURL(base + relative + '.sha1'), {
+                signal: AbortSignal.timeout(3e4),
+                redirect: 'error',
+              });
+              const checksum = res.ok ? (await res.text()).trim().split(/\s/)[0] : '';
+              if (checksum && !/^[a-f0-9]{40}$/i.test(checksum)) throw Error('Checksum Maven inválido.');
               await fsp.mkdir(path.dirname(file), { recursive: true });
               await fsp.writeFile(checksumFile, checksum);
             }
-            hash = [...lib.checksums, (await fsp.readFile(checksumFile, 'utf8')).trim()];
+            const checksum = (await fsp.readFile(checksumFile, 'utf8')).trim();
+            if (checksum) hash = [...lib.checksums, checksum];
           }
           await download(artifact?.url || base + relative, file, hash);
           classpath.push(file);
         }
-        if (lib.natives?.osx) {
-          const key = lib.natives.osx.replace('${arch}', '64');
+        if (lib.natives?.[PLATFORM]) {
+          const key = lib.natives[PLATFORM].replace('${arch}', '64');
           const item = lib.downloads.classifiers[key];
           const file = path.join(this.root, 'libraries', item.path);
           await download(item.url, file, item.sha1);
@@ -220,15 +256,16 @@ class Runtime {
     await fsp.mkdir(natives, { recursive: true });
     for (const file of nativeJars) {
       const entries = unzipSync(await fsp.readFile(file), {
-        filter: (e) => /\.(dylib|jnilib)$/.test(e.name) && !/twitch/i.test(e.name) && e.originalSize < 2e7,
+        filter: (e) => NATIVE_FILE.test(e.name) && !/twitch/i.test(e.name) && e.originalSize < 2e7,
       });
       for (const [name, data] of Object.entries(entries))
         await fsp.writeFile(path.join(natives, path.basename(name)), data);
     }
-    const arm = path.join(this.assets, 'natives-arm64');
-    for (const name of fs.readdirSync(arm))
-      if (/\.(dylib|jnilib)$/.test(name)) await fsp.copyFile(path.join(arm, name), path.join(natives, name));
-    await fsp.rm(path.join(natives, 'libtwitchsdk.dylib'), { force: true });
+    if (PLATFORM === 'osx' && process.arch === 'arm64') {
+      const arm = path.join(this.assets, 'natives-arm64');
+      for (const name of fs.readdirSync(arm))
+        if (NATIVE_FILE.test(name)) await fsp.copyFile(path.join(arm, name), path.join(natives, name));
+    }
     const assetRoot = path.join(this.root, 'assets');
     const indexFile = path.join(assetRoot, 'indexes', meta.assetIndex.id + '.json');
     await download(meta.assetIndex.url, indexFile, meta.assetIndex.sha1);
@@ -315,7 +352,6 @@ class Runtime {
       installation.logArgument,
       '-Djava.library.path=' + installation.natives,
       '-Dfml.ignoreInvalidMinecraftCertificates=false',
-      '-Xdock:name=Antagon Client',
       '-cp',
       installation.classpath.join(path.delimiter),
       installation.mainClass,
@@ -344,6 +380,7 @@ class Runtime {
       '--height',
       '800',
     ];
+    if (PLATFORM === 'osx') args.unshift('-Xdock:name=Antagon Client');
     if (settings.fullscreen) args.push('--fullscreen');
     if (testOptions.smoke) args.unshift('-Dantagon.smoke=true');
     if (testOptions.wallpaper) args.unshift('-Dantagon.wallpaper=' + testOptions.wallpaper);
@@ -353,7 +390,11 @@ class Runtime {
       args[i + 3] = String(testOptions.height);
     }
     this.emit({ phase: 'launching', message: 'Abrindo Minecraft', percent: 100 });
-    const child = spawn(installation.java, args, { cwd: this.game, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(installation.java, args, {
+      cwd: this.game,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
     this.child = child;
     const logDir = path.join(this.root, 'logs');
     await fsp.mkdir(logDir, { recursive: true });
@@ -386,6 +427,7 @@ module.exports = {
   download,
   allowed,
   mavenPath,
+  extract,
   offlineAccount: require('./settings.cjs').offlineAccount,
   redact,
   checkURL,

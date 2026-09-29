@@ -1,6 +1,7 @@
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
 const api = window.antagon;
+document.body.classList.add(api.platform);
 let settings, account, toastTimer;
 function toast(message) {
   $('#toast').textContent = message;

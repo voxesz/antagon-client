@@ -1,7 +1,6 @@
 package studio.antagon;
 
 import static studio.antagon.Reflect.*;
-import static studio.antagon.Spotify.*;
 
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
@@ -214,19 +213,25 @@ public class AntagonHud {
                 {"width", "LARGURA", "100%,75%,50%"},
                 {"lines", "LINHAS VISÍVEIS", "10,5,15,20"}
             };
-        if (mod.equals("radio"))
-            return new String[][] {
-                {"playlist", "PLAYLIST", "action"},
-                {"controls", "CONTROLES", "action"},
-                {"volume", "VOLUME", "slider"},
-                SIZE,
-                {"art", "CAPA DO ÁLBUM", "on,off"},
-                {"bg", "FUNDO", "on,off"},
-                {"bar", "BARRA VERMELHA", "on,off"},
-                {"prev", "TECLA: VOLTAR", "key", "NENHUMA"},
-                {"pause", "TECLA: PAUSAR", "key", "NENHUMA"},
-                {"next", "TECLA: PASSAR", "key", "NENHUMA"}
-            };
+        if (mod.equals("radio")) {
+            List<String[]> radio =
+                    new ArrayList<String[]>(
+                            Arrays.asList(
+                                    new String[][] {
+                                        {"playlist", "PLAYLIST", "action"},
+                                        {"controls", "CONTROLES", "action"},
+                                        {"volume", "VOLUME", "slider"},
+                                        SIZE,
+                                        {"art", "CAPA DO ÁLBUM", "on,off"},
+                                        {"bg", "FUNDO", "on,off"},
+                                        {"bar", "BARRA VERMELHA", "on,off"},
+                                        {"prev", "TECLA: VOLTAR", "key", "NENHUMA"},
+                                        {"pause", "TECLA: PAUSAR", "key", "NENHUMA"},
+                                        {"next", "TECLA: PASSAR", "key", "NENHUMA"}
+                                    }));
+            if (!Spotify.HAS_VOLUME) radio.remove(2);
+            return radio.toArray(new String[0][]);
+        }
         if (mod.equals("hitbox"))
             return new String[][] {
                 {"color", "COR", COLOR_VALUES},
@@ -317,9 +322,9 @@ public class AntagonHud {
             return;
         }
         if (!enabled("radio")) return;
-        if (k == keyOf("radio", "prev")) radioCommand("previous track");
+        if (k == keyOf("radio", "prev")) Spotify.previous();
         else if (k == keyOf("radio", "pause")) radioToggle();
-        else if (k == keyOf("radio", "next")) radioCommand("next track");
+        else if (k == keyOf("radio", "next")) Spotify.next();
     }
 
     private void openMenu() {
@@ -542,23 +547,12 @@ public class AntagonHud {
     }
 
     private void radioPlay() {
-        String uri = config.getProperty("radio.uri");
-        if (uri == null || spotifyUri(uri) == null) return;
-        osaAsync(
-                "if application \"Spotify\" is not running then",
-                "do shell script \"open -g -a Spotify\"",
-                "delay 4",
-                "end if",
-                "tell application \"Spotify\" to play track \"" + spotifyUri(uri) + "\"");
+        Spotify.play(config.getProperty("radio.uri"));
     }
 
     private void radioToggle() {
         if (radioState.equals("off") || radioState.equals("stopped")) radioPlay();
-        else radioCommand("playpause");
-    }
-
-    private void radioCommand(String command) {
-        osaAsync(SPOTIFY_ON, "tell application \"Spotify\" to " + command, "end if");
+        else Spotify.playPause();
     }
 
     private void radioLoop() {
@@ -571,28 +565,14 @@ public class AntagonHud {
                 }
                 if (enabled("radio")) {
                     off = 0;
-                    String[] p =
-                            osa(
-                                            SPOTIFY_ON,
-                                            "tell application \"Spotify\"",
-                                            "if player state is stopped then return \"stopped\"",
-                                            "set t to current track",
-                                            "return (player state as string) & \"|~|\" & (name of"
-                                                + " t) & \"|~|\" & (artist of t) & \"|~|\" &"
-                                                + " (artwork url of t) & \"|~|\" & (player position"
-                                                + " as string) & \"|~|\" & (duration of t as"
-                                                + " string) & \"|~|\" & (sound volume as string)",
-                                            "end tell",
-                                            "end if",
-                                            "return \"off\"")
-                                    .split("\\|~\\|");
+                    String[] p = Spotify.status();
                     if (p.length >= 7 && System.currentTimeMillis() - volumeSentAt > 2500)
-                        radioVolume = (int) parseNumber(p[6]);
+                        radioVolume = (int) Spotify.number(p[6]);
                     if (p.length >= 6) {
                         radioTitle = p[1];
                         radioArtist = p[2];
-                        radioPos = parseNumber(p[4]);
-                        radioDur = parseNumber(p[5]) / 1000f;
+                        radioPos = Spotify.number(p[4]);
+                        radioDur = Spotify.number(p[5]) / 1000f;
                         radioStamp = System.currentTimeMillis();
                         radioState = p[0];
                         if (!p[3].equals(radioArt)) {
@@ -604,7 +584,7 @@ public class AntagonHud {
                         radioTitle = "";
                     }
                 } else if (++off == 2 && !radioState.equals("off")) {
-                    radioCommand("pause");
+                    Spotify.pause(radioState.equals("playing"));
                     radioState = "off";
                     radioTitle = "";
                 }
@@ -1858,12 +1838,12 @@ public class AntagonHud {
             volumeSentAt = System.currentTimeMillis();
             if (last || System.currentTimeMillis() - volumeSent > 150) {
                 volumeSent = System.currentTimeMillis();
-                radioCommand("set sound volume to " + v);
+                Spotify.volume(v);
             }
         }
 
         private void pastePlaylist() {
-            String uri = spotifyUri(run("/usr/bin/pbpaste"));
+            String uri = Spotify.uri(Spotify.clipboard());
             if (uri == null) {
                 notice = "COPIE O LINK DE UMA PLAYLIST DO SPOTIFY";
                 return;
@@ -2004,11 +1984,9 @@ public class AntagonHud {
                         continue;
                     }
                     if (opts[k][0].equals("controls")) {
-                        if (in(mx, my, x0 + PW - 108, ry + 3, 24, 16))
-                            radioCommand("previous track");
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 24, 16)) Spotify.previous();
                         else if (in(mx, my, x0 + PW - 82, ry + 3, 40, 16)) radioToggle();
-                        else if (in(mx, my, x0 + PW - 40, ry + 3, 24, 16))
-                            radioCommand("next track");
+                        else if (in(mx, my, x0 + PW - 40, ry + 3, 24, 16)) Spotify.next();
                         continue;
                     }
                     if (in(mx, my, x0 + PW - 108, ry, 92, 22)) {

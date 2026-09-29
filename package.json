@@ -14,8 +14,10 @@
     "test:game": "node scripts/smoke-game.cjs",
     "build:mod": "node scripts/build-mod.cjs",
     "format": "prettier --write .",
-    "prepackage": "npm run build:mod",
-    "package": "electron-packager . 'Antagon Client' --platform=darwin --arch=arm64 --out=release --overwrite --icon=assets/icon.icns --ignore='^/(release|build|tests|docs|scripts|mod-src)(/|$)'"
+    "prepackage:mac": "npm run build:mod",
+    "package:mac": "electron-packager . 'Antagon Client' --platform=darwin --arch=arm64 --out=release --overwrite --icon=assets/icon.icns --ignore='^/(release|build|tests|docs|scripts|mod-src)(/|$)'",
+    "prepackage:win": "npm run build:mod",
+    "package:win": "electron-packager . 'Antagon Client' --platform=win32 --arch=x64 --out=release --overwrite --icon=assets/icon.ico --ignore='^/(release|build|tests|docs|scripts|mod-src)(/|$)'"
   },
   "dependencies": {
     "fflate": "^0.8.3",

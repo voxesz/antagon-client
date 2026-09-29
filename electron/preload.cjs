@@ -5,6 +5,7 @@ async function call(channel, ...args) {
   return result.value;
 }
 contextBridge.exposeInMainWorld('antagon', {
+  platform: process.platform,
   init: () => call('app:init'),
   saveSettings: (s) => call('settings:save', s),
   login: () => call('account:login'),

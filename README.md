@@ -1,9 +1,20 @@
 # Antagon Client
 
-Client de Minecraft 1.8.9 para PvP, feito para macOS com Apple Silicon. Um launcher em Electron instala e abre o jogo
+Client de Minecraft 1.8.9 para PvP, para macOS (Apple Silicon e Intel) e Windows. Um launcher em Electron instala e abre o jogo
 com Forge, e um mod próprio adiciona HUD, mods de PvP e um menu no **Shift direito**, no estilo dos clients profissionais.
 
 ![Launcher](docs/launcher.png)
+
+## Download
+
+Baixe a versão mais recente em [Releases](https://github.com/voxesz/antagon-client/releases/latest):
+
+- **macOS:** `Antagon-Client-macOS.zip`. Na primeira vez, clique com o botão direito no app → **Abrir**. Se o macOS disser
+  que o app está danificado, rode `xattr -cr "/Applications/Antagon Client.app"` no Terminal.
+- **Windows:** `Antagon-Client-Windows.zip`. Extraia e abra `Antagon Client.exe`. Se o SmartScreen avisar, clique em
+  **Mais informações → Executar assim mesmo**.
+
+O app não é assinado por uma conta paga da Apple ou da Microsoft, por isso os avisos na primeira abertura.
 
 | Menu no jogo (Shift direito) | Editor de HUD |
 | --- | --- |
@@ -16,10 +27,14 @@ com Forge, e um mod próprio adiciona HUD, mods de PvP e um menu no **Shift dire
 - Conta Microsoft original ou nick offline
 - Instala Minecraft 1.8.9 + Forge numa pasta isolada, sem mexer no Minecraft ou no Lunar já instalados
 - Roda nativo em Apple Silicon (Java 8 arm64 e natives do LWJGL arm64), com ~200 FPS
+- Windows 10/11 x64 com Java 8 próprio, sem precisar instalar nada
 - Plano de fundo animado em shader, com profundidade real capturada do jogo, ou uma imagem sua
 - Instalação guiada do OptiFine
 
 **Mods** (todos configuráveis pelo Shift direito)
+
+No Windows, a Rádio Antagon abre a playlist e controla o Spotify pelas teclas de mídia; volume e capa do álbum são
+exclusivos do macOS.
 
 | HUD | Combate | Utilidades |
 | --- | --- | --- |
@@ -33,7 +48,7 @@ Todos os módulos do HUD podem ser arrastados e redimensionados pelos quatro can
 
 ## Desenvolvimento
 
-Requisitos: macOS, Node.js 22+ e JDK 17 (só para compilar o mod).
+Requisitos: Node.js 22+ e JDK 17+ (só para compilar o mod). Os scripts de teste no jogo usam caminhos do macOS.
 
 ```sh
 npm install
@@ -47,7 +62,8 @@ npm start           # abre o launcher
 | `npm test` | Testes do launcher |
 | `npm run test:ui` | Abre o launcher com Playwright e percorre a interface |
 | `npm run test:game` | Abre o jogo, testa menu, editor e mods e salva screenshots |
-| `npm run package` | Compila o mod e gera o `.app` em `release/` |
+| `npm run package:mac` | Compila o mod e gera o `.app` em `release/` |
+| `npm run package:win` | Compila o mod e gera a versão Windows x64 em `release/` |
 | `npm run format` | Formata o código (Prettier) |
 
 `scripts/capture-wallpaper.cjs` renderiza um novo plano de fundo a partir do jogo:
