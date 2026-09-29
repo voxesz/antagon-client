@@ -9,7 +9,7 @@ import java.util.Map;
 @IFMLLoadingPlugin.TransformerExclusions("studio.antagon.core")
 public class AntagonCore implements IFMLLoadingPlugin {
     public String[] getASMTransformerClass() {
-        return new String[] {HitColorTransformer.class.getName()};
+        return new String[] {AntagonTransformer.class.getName()};
     }
 
     public String getModContainerClass() {

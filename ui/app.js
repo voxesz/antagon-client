@@ -86,6 +86,7 @@ $('#logout-microsoft').onclick = async () => {
   renderProfile();
 };
 function updateState(state) {
+  gameRunning = ['launching', 'running'].includes(state.phase);
   document.body.dataset.phase = state.phase;
   const working = ['preparing', 'launching', 'running', 'updating'].includes(state.phase);
   $('#launch-status').textContent = state.message;
@@ -151,12 +152,36 @@ $('#wallpaper-pick').onclick = async () => {
   }
 };
 $('#wallpaper-reset').onclick = async () => renderWallpaper(await api.resetWallpaper());
+let updateStatus = null;
+const UPDATE_LABEL = {
+  dev: () => 'Versão de desenvolvimento',
+  latest: (u) => '✓ Atualizado · v' + u.current,
+  offline: () => 'Não foi possível verificar atualizações',
+  available: (u) => 'Atualizar para ' + u.version,
+};
+async function checkUpdate() {
+  $('#update').className = 'update-status';
+  $('#update').textContent = 'Verificando atualizações…';
+  updateStatus = await api.checkUpdate().catch(() => ({ status: 'offline' }));
+  $('#update').className = updateStatus.status === 'available' ? 'update' : 'update-status';
+  $('#update').textContent = UPDATE_LABEL[updateStatus.status](updateStatus);
+}
 $('#update').onclick = async () => {
+  if (updateStatus?.status !== 'available') return checkUpdate();
   try {
     await api.installUpdate();
   } catch (e) {
     toast(e.message);
   }
+};
+function renderBackground(mode) {
+  document.body.dataset.background = mode;
+  $('#background-switch').textContent = 'Fundo: ' + (mode === 'ascii' ? 'Logo' : 'Paisagem');
+}
+$('#background-switch').onclick = () => {
+  settings.background = settings.background === 'ascii' ? 'scene' : 'ascii';
+  renderBackground(settings.background);
+  persist();
 };
 $('#open-folder').onclick = async () => {
   if (await api.openFolder()) toast('A pasta será criada ao abrir o jogo pela primeira vez.');
@@ -165,6 +190,206 @@ $('#open-logs').onclick = async () => {
   $('#logs-text').textContent = await api.logs();
   $('#logs-dialog').showModal();
 };
+const community = api.community;
+const ACTIVITY = {
+  launcher: () => 'No launcher',
+  menu: () => 'No menu do jogo',
+  singleplayer: () => 'Jogando singleplayer',
+  server: (p) => 'Jogando em ' + p.server,
+  playing: () => 'Jogando',
+  offline: () => 'Offline',
+};
+let people = { me: null, friends: [], incoming: [], outgoing: [] },
+  chatWith = null,
+  unread = new Set(),
+  loaded = false,
+  gameRunning = false,
+  refreshTimer;
+const escape = (text) =>
+  String(text ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+const head = (p) =>
+  /^[0-9a-f]{32}$/.test(p.mcUuid || '')
+    ? `<img class="head" src="https://mc-heads.net/avatar/${p.mcUuid}/32" alt="" />`
+    : '<span class="head"></span>';
+
+function renderCommunity() {
+  const me = people.me;
+  $('#community-gate').hidden = !!me;
+  $('#community').hidden = !me;
+  $('#community-account').textContent = me ? 'Conectado como ' + me.name : 'Não conectado';
+  $('#community-logout').hidden = !me;
+  const pending = people.incoming.length + unread.size;
+  $('#friends-badge').textContent = pending;
+  $('#friends-badge').hidden = !pending;
+  if (!me) return;
+  const row = (p, detail, actions = '', extra = '') =>
+    `<div class="person ${p.online ? 'online' : ''} ${p.id === chatWith ? 'active' : ''}" data-person="${p.id}">${head(p)}<span class="who"><b>${escape(p.name)}</b><small>${escape(detail)}</small></span>${extra}<span class="actions">${actions}</span></div>`;
+  $('#requests').innerHTML =
+    (people.incoming.length
+      ? '<h3>Pedidos</h3>' +
+        people.incoming
+          .map((p) =>
+            row(
+              p,
+              'Quer ser seu amigo',
+              `<button class="primary" data-accept="${p.id}">Aceitar</button><button class="secondary" data-remove="${p.id}">Recusar</button>`,
+            ),
+          )
+          .join('')
+      : '') +
+    (people.outgoing.length
+      ? '<h3>Enviados</h3>' +
+        people.outgoing
+          .map((p) => row(p, 'Pedido enviado', `<button class="secondary" data-remove="${p.id}">Cancelar</button>`))
+          .join('')
+      : '');
+  const friends = [...people.friends].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name));
+  $('#friend-list').innerHTML =
+    `<h3>Amigos · ${friends.filter((f) => f.online).length} online</h3>` +
+    (friends.length
+      ? friends
+          .map((p) =>
+            row(
+              p,
+              ACTIVITY[p.activity](p),
+              p.activity === 'server' && !gameRunning
+                ? `<button class="primary" data-join="${escape(p.server)}">Entrar</button>`
+                : '',
+              unread.has(p.id) ? '<span class="unread"></span>' : '',
+            ),
+          )
+          .join('')
+      : '<p class="chat-empty">Adicione um amigo pelo nick do Minecraft.</p>');
+  const friend = people.friends.find((f) => f.id === chatWith);
+  $('#chat-empty').hidden = !!friend;
+  $('#chat-head').hidden = $('#chat-form').hidden = !friend;
+  if (friend) $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>`;
+  else $('#messages').innerHTML = '';
+}
+
+async function refreshCommunity() {
+  try {
+    const next = await community.state();
+    if (loaded)
+      for (const f of next.friends)
+        if (f.online && !people.friends.find((p) => p.id === f.id)?.online) toast(f.name + ' está online');
+    for (const p of next.incoming)
+      if (loaded && !people.incoming.find((i) => i.id === p.id)) toast(p.name + ' quer ser seu amigo');
+    people = next;
+    loaded = true;
+    renderCommunity();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+const refreshSoon = () => {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(refreshCommunity, 300);
+};
+
+function appendMessage(message) {
+  const bubble = document.createElement('div');
+  bubble.className = 'message' + (message.sender === people.me?.id ? ' mine' : '');
+  bubble.textContent = message.body;
+  $('#messages').append(bubble);
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+async function openChat(id) {
+  chatWith = id;
+  unread.delete(id);
+  renderCommunity();
+  $('#messages').innerHTML = '';
+  try {
+    (await community.messages(id)).forEach(appendMessage);
+  } catch (e) {
+    toast(e.message);
+  }
+  $('#chat-input').focus();
+}
+
+$('#community-login').onclick = async () => {
+  if (settings.mode !== 'microsoft' || !account) {
+    toast('A comunidade usa sua conta Microsoft. Entre com ela no seu perfil.');
+    $('#profile-open').click();
+    accountTab('microsoft');
+    return;
+  }
+  const button = $('#community-login');
+  button.disabled = true;
+  try {
+    await community.login();
+    await refreshCommunity();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#community-logout').onclick = async () => {
+  await community.logout();
+  people = { me: null, friends: [], incoming: [], outgoing: [] };
+  chatWith = null;
+  renderCommunity();
+};
+$('#add-friend').onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    toast(await community.add($('#friend-name').value));
+    $('#friend-name').value = '';
+    refreshCommunity();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+$('#view-friends').addEventListener('click', async (e) => {
+  const target = e.target.closest('[data-accept],[data-remove],[data-join],[data-person]');
+  if (!target) return;
+  try {
+    if (target.dataset.accept) await community.accept(target.dataset.accept);
+    else if (target.dataset.remove) await community.remove(target.dataset.remove);
+    else if (target.dataset.join) {
+      await community.join(target.dataset.join);
+      return;
+    } else if (people.friends.some((f) => f.id === target.dataset.person)) return openChat(target.dataset.person);
+    else return;
+    refreshCommunity();
+  } catch (error) {
+    toast(error.message);
+  }
+});
+$('#chat-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('#chat-input').value.trim();
+  if (!text || !chatWith) return;
+  $('#chat-input').value = '';
+  try {
+    await community.send(chatWith, text);
+  } catch (error) {
+    toast(error.message);
+    $('#chat-input').value = text;
+  }
+};
+community.onEvent((event) => {
+  if (event.type !== 'message') return refreshSoon();
+  const m = event.payload;
+  const other = m.sender === people.me?.id ? m.recipient : m.sender;
+  if (other === chatWith && $('#view-friends').classList.contains('active')) appendMessage(m);
+  else if (m.sender !== people.me?.id) {
+    unread.add(other);
+    toast((people.friends.find((f) => f.id === other)?.name || 'Amigo') + ': ' + m.body.slice(0, 60));
+    renderCommunity();
+  }
+});
+setInterval(refreshCommunity, 3e4);
+$('#share-server').onchange = (e) => {
+  settings.shareServer = e.target.checked;
+  persist();
+};
+
 (async () => {
   try {
     const data = await api.init();
@@ -172,11 +397,8 @@ $('#open-logs').onclick = async () => {
     account = data.account;
     renderProfile();
     $('#version').textContent = data.version;
-    api.checkUpdate().then((update) => {
-      if (!update) return;
-      $('#update').textContent = 'Atualizar para ' + update.version;
-      $('#update').hidden = false;
-    });
+    checkUpdate();
+    renderBackground(settings.background);
     $('#memory').value = settings.memory;
     $('#memory-value').textContent = settings.memory + ' GB';
     $('#fullscreen').checked = settings.fullscreen;
@@ -184,6 +406,8 @@ $('#open-logs').onclick = async () => {
     $('#install-state').textContent = data.installed ? 'Forge · instalado' : 'Forge · será instalado ao jogar';
     renderOptifine(data.optifine);
     renderWallpaper(data.wallpaper);
+    $('#share-server').checked = settings.shareServer;
+    refreshCommunity();
     updateState(data.state);
     api.onState(updateState);
   } catch (e) {

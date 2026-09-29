@@ -382,6 +382,8 @@ class Runtime {
     ];
     if (PLATFORM === 'osx') args.unshift('-Xdock:name=Antagon Client');
     if (settings.fullscreen) args.push('--fullscreen');
+    const server = /^([A-Za-z0-9.-]{1,253})(?::(\d{1,5}))?$/.exec(testOptions.server || '');
+    if (server) args.push('--server', server[1], '--port', server[2] || '25565');
     if (testOptions.smoke) args.unshift('-Dantagon.smoke=true');
     if (testOptions.wallpaper) args.unshift('-Dantagon.wallpaper=' + testOptions.wallpaper);
     if (testOptions.width) {

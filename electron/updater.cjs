@@ -34,7 +34,7 @@ async function check(current) {
     headers: { accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(1e4),
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw Error('GitHub indisponível.');
   const release = await res.json();
   const asset = release.assets?.find((a) => a.name === ASSET);
   if (!asset || !/^sha256:[a-f0-9]{64}$/.test(asset.digest || '') || !newer(release.tag_name, current)) return null;

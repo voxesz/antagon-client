@@ -1,12 +1,22 @@
 const crypto = require('node:crypto');
-const DEFAULTS = { mode: 'offline', nickname: 'Player', memory: 3, fullscreen: false, pack: true };
+const DEFAULTS = {
+  mode: 'offline',
+  nickname: 'Player',
+  memory: 3,
+  fullscreen: false,
+  pack: true,
+  shareServer: true,
+  background: 'scene',
+};
 const NICKNAME = /^[A-Za-z0-9_]{3,16}$/;
 function validateSettings(input) {
   const settings = structuredClone(DEFAULTS);
   if (input?.mode === 'microsoft') settings.mode = 'microsoft';
   if (typeof input?.nickname === 'string' && NICKNAME.test(input.nickname)) settings.nickname = input.nickname;
   if (Number.isFinite(input?.memory)) settings.memory = Math.max(2, Math.min(8, Math.round(input.memory)));
-  for (const key of ['fullscreen', 'pack']) if (typeof input?.[key] === 'boolean') settings[key] = input[key];
+  for (const key of ['fullscreen', 'pack', 'shareServer'])
+    if (typeof input?.[key] === 'boolean') settings[key] = input[key];
+  if (['scene', 'ascii'].includes(input?.background)) settings.background = input.background;
   return settings;
 }
 function offlineAccount(name) {

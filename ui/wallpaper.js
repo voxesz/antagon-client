@@ -101,6 +101,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (
     !ready ||
+    document.body.dataset.background === 'ascii' ||
     document.hidden ||
     !stage.classList.contains('active') ||
     ['launching', 'running'].includes(document.body.dataset.phase)

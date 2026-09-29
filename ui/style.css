@@ -106,7 +106,7 @@ nav {
 .update:hover:not(:disabled) {
   background: var(--red-hover);
 }
-.update:not([hidden]) + .account {
+.update + .account {
   margin-left: 12px;
 }
 .account {
@@ -480,4 +480,223 @@ pre {
 
 .win32 .topbar {
   padding: 0 150px 0 20px;
+}
+
+.badge {
+  margin-left: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--red);
+  color: var(--text);
+  font: 600 10px/16px var(--ui);
+  display: inline-block;
+  text-align: center;
+}
+.badge[hidden] {
+  display: none;
+}
+
+#view-friends {
+  overflow: hidden;
+}
+.gate {
+  max-width: 420px;
+  margin: 18vh auto 0;
+  text-align: center;
+}
+.gate h2 {
+  font: 22px var(--pixel);
+  margin: 0 0 8px;
+}
+.gate p {
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+.community {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: 100%;
+}
+.community[hidden] {
+  display: none;
+}
+.friends {
+  border-right: 1px solid var(--line);
+  overflow: auto;
+  padding: 16px;
+}
+.add-friend,
+.chat-form {
+  display: flex;
+  gap: 8px;
+}
+.add-friend input,
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.add-friend input:focus,
+.chat-form input:focus {
+  border-color: var(--red);
+  outline: 0;
+}
+.friends h3 {
+  font: 12px var(--pixel);
+  color: var(--muted);
+  margin: 20px 0 6px;
+}
+.person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  text-align: left;
+}
+.person:hover,
+.person.active {
+  background: var(--raised);
+}
+.head {
+  width: 32px;
+  height: 32px;
+  border-radius: 3px;
+  image-rendering: pixelated;
+  flex: none;
+  background: var(--raised);
+}
+.person .who {
+  flex: 1;
+  min-width: 0;
+}
+.person b {
+  display: block;
+  font-weight: 600;
+}
+.person small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.person.online small {
+  color: #7bd66a;
+}
+.person .unread {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  flex: none;
+}
+.person .actions {
+  display: flex;
+  gap: 6px;
+}
+.person .actions button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.chat-empty {
+  margin: auto;
+  color: var(--muted);
+}
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-head[hidden],
+.chat-form[hidden],
+.chat-empty[hidden] {
+  display: none;
+}
+.messages {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: text;
+}
+.message {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--raised);
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+}
+.message.mine {
+  align-self: flex-end;
+  background: var(--red);
+}
+.chat-form {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+#ascii {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+}
+[data-background='ascii'] #ascii {
+  display: block;
+}
+[data-background='ascii'] #map {
+  display: none;
+}
+.background-switch {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: #0009;
+  border: 1px solid #fff2;
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+}
+.background-switch:hover {
+  background: #000c;
+}
+.update-status {
+  margin-left: auto;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.update-status:hover {
+  color: var(--text);
+}
+.update-status + .account {
+  margin-left: 12px;
 }

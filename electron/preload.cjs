@@ -8,6 +8,22 @@ contextBridge.exposeInMainWorld('antagon', {
   platform: process.platform,
   checkUpdate: () => call('update:check'),
   installUpdate: () => call('update:install'),
+  community: {
+    state: () => call('community:state'),
+    login: () => call('community:login'),
+    logout: () => call('community:logout'),
+    add: (name) => call('community:add', name),
+    accept: (id) => call('community:accept', id),
+    remove: (id) => call('community:remove', id),
+    messages: (id) => call('community:messages', id),
+    send: (id, body) => call('community:send', id, body),
+    join: (server) => call('community:join', server),
+    onEvent: (fn) => {
+      const listener = (_, event) => fn(event);
+      ipcRenderer.on('community:event', listener);
+      return () => ipcRenderer.removeListener('community:event', listener);
+    },
+  },
   init: () => call('app:init'),
   saveSettings: (s) => call('settings:save', s),
   login: () => call('account:login'),

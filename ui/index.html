@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://mc-heads.net; font-src 'self'; connect-src 'none';"
     />
     <title>Antagon Client</title>
     <link rel="stylesheet" href="style.css" />
@@ -21,9 +21,10 @@
       </div>
       <nav>
         <button class="tab active" data-view="play">Jogar</button
+        ><button class="tab" data-view="friends">Amigos<span class="badge" id="friends-badge" hidden></span></button
         ><button class="tab" data-view="settings">Configurações</button>
       </nav>
-      <button class="update" id="update" hidden></button>
+      <button class="update-status" id="update">Verificando atualizações…</button>
       <button class="account" id="profile-open">
         <span class="avatar" id="avatar">P</span
         ><span><b id="profile-name">Player</b><small id="profile-mode">Offline</small></span>
@@ -32,8 +33,9 @@
 
     <main>
       <section id="view-play" class="view active">
-        <canvas id="map" aria-hidden="true"></canvas>
+        <canvas id="map" aria-hidden="true"></canvas><canvas id="ascii" aria-hidden="true"></canvas>
         <div class="shade"></div>
+        <button class="background-switch" id="background-switch">Fundo: Paisagem</button>
         <div class="play-panel">
           <div class="version"><b>Minecraft 1.8.9</b><small id="install-state">Forge</small></div>
           <div class="status">
@@ -43,6 +45,39 @@
           <button class="play" id="launch">JOGAR</button>
         </div>
         <p class="hint">Mods e HUD: aperte <kbd>Shift direito</kbd> dentro do jogo · <kbd>F8</kbd> oculta o HUD</p>
+      </section>
+
+      <section id="view-friends" class="view">
+        <div class="gate" id="community-gate">
+          <h2>Amigos</h2>
+          <p>Adicione seus amigos, veja o que eles estão jogando e converse sem sair do launcher.</p>
+          <button class="primary" id="community-login">Entrar com minha conta Microsoft</button>
+        </div>
+        <div class="community" id="community" hidden>
+          <aside class="friends">
+            <form class="add-friend" id="add-friend">
+              <input
+                id="friend-name"
+                maxlength="16"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Nick do amigo"
+              />
+              <button class="primary">Adicionar</button>
+            </form>
+            <div id="requests"></div>
+            <div id="friend-list"></div>
+          </aside>
+          <div class="chat">
+            <p class="chat-empty" id="chat-empty">Escolha um amigo para conversar.</p>
+            <div class="chat-head" id="chat-head" hidden></div>
+            <div class="messages" id="messages"></div>
+            <form class="chat-form" id="chat-form" hidden>
+              <input id="chat-input" maxlength="500" autocomplete="off" placeholder="Mensagem" />
+              <button class="primary">Enviar</button>
+            </form>
+          </div>
+        </div>
       </section>
 
       <section id="view-settings" class="view">
@@ -78,6 +113,15 @@
               <button class="secondary" id="wallpaper-pick">Escolher imagem</button
               ><button class="secondary" id="wallpaper-reset" hidden>Usar padrão</button>
             </div>
+          </div>
+          <h2>Comunidade</h2>
+          <div class="row">
+            <label for="share-server">Mostrar para amigos o servidor em que estou</label
+            ><label class="switch"><input id="share-server" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <span>Conta na comunidade<small id="community-account">Não conectado</small></span
+            ><button class="secondary" id="community-logout" hidden>Sair</button>
           </div>
           <h2>Arquivos</h2>
           <div class="row"><span>Pasta do jogo</span><button class="secondary" id="open-folder">Abrir</button></div>
@@ -123,6 +167,7 @@
     </dialog>
     <div id="toast" role="status"></div>
     <script src="wallpaper.js"></script>
+    <script src="ascii.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

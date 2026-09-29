@@ -18,9 +18,13 @@ O app não é assinado por uma conta paga da Apple ou da Microsoft, por isso os 
 
 A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao abrir e mostra o botão **Atualizar**.
 
-| Menu no jogo (Shift direito) | Editor de HUD |
+| Amigos e chat | Menu no jogo (Shift direito) |
 | --- | --- |
-| ![Menu](docs/in-game-menu.png) | ![Editor de HUD](docs/hud-editor.png) |
+| ![Amigos](docs/friends.png) | ![Menu](docs/in-game-menu.png) |
+
+| Editor de HUD |
+| --- |
+| ![Editor de HUD](docs/hud-editor.png) |
 
 ## Recursos
 
@@ -32,6 +36,8 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Windows 10/11 x64 com Java 8 próprio, sem precisar instalar nada
 - Plano de fundo animado em shader, com profundidade real capturada do jogo, ou uma imagem sua
 - Instalação guiada do OptiFine
+- Amigos: adicionar pelo nick, ver o que cada um está jogando, entrar no mesmo servidor e conversar (conta Microsoft)
+- Atualização automática pelas Releases do GitHub
 
 **Mods** (todos configuráveis pelo Shift direito)
 
@@ -71,12 +77,20 @@ npm start           # abre o launcher
 `scripts/capture-wallpaper.cjs` renderiza um novo plano de fundo a partir do jogo:
 `node scripts/capture-wallpaper.cjs seed,x,y,z,yaw,pitch,horário`.
 
+## Comunidade
+
+Amigos, status e chat usam o [Supabase](https://supabase.com) (`supabase/`). O login confirma a conta Microsoft na API
+da Mojang (`supabase/functions/minecraft-auth`) antes de criar a sessão; as regras de acesso ficam no próprio banco
+(`supabase/migrations`): só amigos veem o seu status, só dá para mandar mensagem para amigos e ninguém cria amizade em
+nome de outro. A chave em `electron/community.cjs` é a chave pública do projeto.
+
 ## Estrutura
 
 ```
-electron/   processo principal: login, instalação e execução do jogo
+electron/   processo principal: login, instalação, execução do jogo, comunidade e atualização
 ui/         interface do launcher e shader do plano de fundo
-mod-src/    mod Forge (HUD, menu, mods) e coremod da Hit Color
+mod-src/    mod Forge (HUD, menu, mods) e coremod (Hit Color e scoreboard)
+supabase/   banco e função de login da comunidade
 scripts/    build do mod, testes e captura do plano de fundo
 assets/     fonte, ícones e natives arm64 (ver assets/natives-arm64/SOURCES.txt)
 ```

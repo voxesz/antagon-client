@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url');
 const { Auth } = require('msmc');
 const { Runtime } = require('./runtime.cjs');
 const updater = require('./updater.cjs');
+const { Community } = require('./community.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 app.setName('Antagon Client');
 const root = process.env.ANTAGON_TEST_ROOT || path.join(app.getPath('appData'), 'Antagon Client');
@@ -87,6 +88,53 @@ function emit(update) {
   if (win && !win.isDestroyed()) win.webContents.send('game:state', state);
 }
 const runtime = new Runtime(root, assets, emit);
+let community;
+function communityEvent(event) {
+  if (win && !win.isDestroyed()) win.webContents.send('community:event', event);
+}
+function gameActivity() {
+  if (!community?.me) return;
+  if (!runtime.child) return community.setActivity('launcher');
+  let status = 'menu';
+  try {
+    status = fs.readFileSync(path.join(root, 'minecraft/antagon-status.txt'), 'utf8').trim();
+  } catch {}
+  const [activity, server] = status.split(' ');
+  if (activity === 'server') community.setActivity(settings.shareServer ? 'server' : 'playing', server);
+  else community.setActivity(['menu', 'singleplayer', 'playing'].includes(activity) ? activity : 'playing');
+}
+async function microsoftSession() {
+  if (!account) throw Error('Entre na sua conta Microsoft primeiro.');
+  try {
+    const xbox = await new Auth('select_account').refresh(account.refresh);
+    const mc = await xbox.getMinecraft();
+    if (mc.isDemo()) throw Error();
+    persistAccount(mc, xbox);
+    return sessionAccount;
+  } catch {
+    throw Error('Sua sessão expirou. Entre novamente com Microsoft.');
+  }
+}
+async function startGame(server) {
+  if (busy || runtime.child) throw Error('O jogo já está aberto ou sendo preparado.');
+  busy = true;
+  try {
+    let active;
+    if (settings.mode === 'offline') active = offlineAccount(settings.nickname);
+    else {
+      emit({ phase: 'preparing', message: 'Autenticando sua conta', percent: 0 });
+      active = await microsoftSession();
+    }
+    const result = await runtime.launch(settings, active, { server });
+    runtime.child?.once('exit', () => setTimeout(gameActivity, 500));
+    return result;
+  } catch (e) {
+    emit({ phase: 'error', message: e.message });
+    throw e;
+  } finally {
+    busy = false;
+  }
+}
 function accountInfo() {
   return account ? { name: account.name, id: account.id } : null;
 }
@@ -230,33 +278,27 @@ app.whenReady().then(() => {
     if (fs.existsSync(file)) fs.unlinkSync(file);
     return true;
   });
-  handle('game:launch', async () => {
-    if (busy || runtime.child) throw Error('O jogo já está aberto ou sendo preparado.');
-    busy = true;
-    try {
-      let active;
-      if (settings.mode === 'offline') active = offlineAccount(settings.nickname);
-      else {
-        if (!account) throw Error('Entre na sua conta Microsoft primeiro.');
-        emit({ phase: 'preparing', message: 'Autenticando sua conta', percent: 0 });
-        try {
-          const xbox = await new Auth('select_account').refresh(account.refresh);
-          const mc = await xbox.getMinecraft();
-          if (mc.isDemo()) throw Error();
-          persistAccount(mc, xbox);
-          active = sessionAccount;
-        } catch {
-          throw Error('Sua sessão expirou. Entre novamente com Microsoft.');
-        }
-      }
-      return await runtime.launch(settings, active);
-    } catch (e) {
-      emit({ phase: 'error', message: e.message });
-      throw e;
-    } finally {
-      busy = false;
-    }
+  handle('game:launch', () => startGame());
+  community = new Community(root, safeStorage, communityEvent);
+  const communityReady = community.restore().catch(() => null);
+  setInterval(gameActivity, 5e3);
+  const needCommunity = () => {
+    if (!community.me) throw Error('Entre na comunidade primeiro.');
+  };
+  handle('community:state', async () => (await communityReady, community.state()));
+  handle('community:login', async () => {
+    if (settings.mode !== 'microsoft' || !account)
+      throw Error('A comunidade usa sua conta Microsoft. Entre com ela no seu perfil.');
+    const session = await microsoftSession();
+    return community.signIn(session.accessToken);
   });
+  handle('community:logout', () => community.signOut());
+  handle('community:add', (name) => (needCommunity(), community.add(String(name || '').trim())));
+  handle('community:accept', (id) => (needCommunity(), community.accept(String(id))));
+  handle('community:remove', (id) => (needCommunity(), community.remove(String(id))));
+  handle('community:messages', (id) => (needCommunity(), community.messages(String(id))));
+  handle('community:send', (id, body) => (needCommunity(), community.send(String(id), body)));
+  handle('community:join', (server) => startGame(String(server || '')));
   handle('optifine:install', () => installOptifine());
   handle('optifine:remove', () => {
     const f = optifine();
@@ -285,9 +327,15 @@ app.whenReady().then(() => {
   });
   let update = null;
   handle('update:check', async () => {
-    if (!app.isPackaged) return null;
-    update = await updater.check(app.getVersion()).catch(() => null);
-    return update && { version: update.version };
+    if (!app.isPackaged) return { status: 'dev', current: app.getVersion() };
+    try {
+      update = await updater.check(app.getVersion());
+    } catch {
+      return { status: 'offline', current: app.getVersion() };
+    }
+    return update
+      ? { status: 'available', version: update.version, current: app.getVersion() }
+      : { status: 'latest', current: app.getVersion() };
   });
   handle('update:install', async () => {
     if (!update) throw Error('Nenhuma atualização disponível.');
@@ -314,5 +362,12 @@ app.whenReady().then(() => {
   });
   handle('window:minimize', () => win.minimize());
   win.loadFile(ui);
+});
+let leaving = false;
+app.on('before-quit', (event) => {
+  if (leaving || !community?.me) return;
+  event.preventDefault();
+  leaving = true;
+  Promise.race([community.setActivity('offline'), new Promise((r) => setTimeout(r, 2e3))]).finally(() => app.quit());
 });
 app.on('window-all-closed', () => app.quit());

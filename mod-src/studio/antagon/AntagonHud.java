@@ -63,7 +63,9 @@ public class AntagonHud {
         "combo",
         "hitbox",
         "hitcolor",
-        "autotext"
+        "autotext",
+        "scoreboard",
+        "hitdelay"
     };
     private static final String[] NAMES = {
         "FPS",
@@ -83,11 +85,13 @@ public class AntagonHud {
         "COMBO COUNTER",
         "HITBOX",
         "HIT COLOR",
-        "AUTO TEXT"
+        "AUTO TEXT",
+        "SCOREBOARD",
+        "HIT DELAY FIX"
     };
     private static final boolean[] DEFAULT_ON = {
         true, true, true, false, true, false, false, false, false, false, false, false, false,
-        false, false, false, false, false
+        false, false, false, false, false, false, false
     };
     private static final int AUTOTEXT_SLOTS = 6;
     private long lastAutoText = 0;
@@ -254,6 +258,14 @@ public class AntagonHud {
                 slots[i] = new String[] {"" + (i + 1), "", "autotext"};
             return slots;
         }
+        if (mod.equals("scoreboard"))
+            return new String[][] {
+                SIZE,
+                {"bg", "FUNDO", "on,off"},
+                {"numbers", "NÚMEROS VERMELHOS", "on,off"},
+                {"hide", "ESCONDER SCOREBOARD", "off,on"}
+            };
+        if (mod.equals("hitdelay")) return new String[0][];
         if (mod.equals("notitles"))
             return new String[][] {{"actionbar", "BARRA DE AÇÃO", "off,on"}};
         if (mod.equals("keys"))
@@ -324,6 +336,32 @@ public class AntagonHud {
         return code < -1 ? Mouse.isButtonDown(code + 100) : code > 0 && Keyboard.isKeyDown(code);
     }
 
+    private int statusTicks = 0;
+    private String lastStatus = "";
+
+    private void writeStatus() {
+        if (++statusTicks % 40 != 0) return;
+        try {
+            String status = "menu";
+            if (field(mc, "field_71441_e", "theWorld") != null) {
+                Object server = call(mc, new String[] {"func_147104_D", "getCurrentServerData"});
+                if ((Boolean) call(mc, new String[] {"func_71356_B", "isSingleplayer"}))
+                    status = "singleplayer";
+                else
+                    status =
+                            server == null
+                                    ? "playing"
+                                    : "server " + field(server, "field_78845_b", "serverIP");
+            }
+            if (status.equals(lastStatus)) return;
+            lastStatus = status;
+            java.nio.file.Files.write(
+                    new File("antagon-status.txt").toPath(), status.getBytes("UTF-8"));
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
     private void boundKey(int code) {
         if (enabled("autotext"))
             for (int i = 1; i <= AUTOTEXT_SLOTS; i++) {
@@ -377,6 +415,12 @@ public class AntagonHud {
 
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.START && enabled("hitdelay"))
+            try {
+                setField(mc, 0, "field_71429_W", "leftClickCounter");
+            } catch (Exception e) {
+                report(e);
+            }
         if (event.phase != TickEvent.Phase.END) return;
         boolean pressed = Keyboard.isKeyDown(Keyboard.KEY_F8);
         if (pressed && !f8) hidden = !hidden;
@@ -389,6 +433,14 @@ public class AntagonHud {
         prune(right);
         sprint();
         chatSettings();
+        Hooks.hideScoreboard = enabled("scoreboard");
+        if (enabled("hitdelay"))
+            try {
+                setField(mc, 0, "field_71429_W", "leftClickCounter");
+            } catch (Exception e) {
+                report(e);
+            }
+        writeStatus();
         comboTick();
         hitColor();
         if (Boolean.getBoolean("antagon.smoke")) smoke();
@@ -1258,6 +1310,64 @@ public class AntagonHud {
                         if (worldTicks == 400) shot("antagon-combat.png");
                         break;
                     }
+                case 404:
+                    {
+                        Object board =
+                                call(
+                                        field(mc, "field_71441_e", "theWorld"),
+                                        new String[] {"func_96441_U", "getScoreboard"});
+                        Object dummy =
+                                Class.forName("net.minecraft.scoreboard.IScoreObjectiveCriteria")
+                                        .getField("field_96641_b")
+                                        .get(null);
+                        Object objective =
+                                call(
+                                        board,
+                                        new String[] {"func_96535_a", "addScoreObjective"},
+                                        "antagon",
+                                        dummy);
+                        call(
+                                objective,
+                                new String[] {"func_96681_a", "setDisplayName"},
+                                "\u00a7e\u00a7lBED WARS");
+                        call(
+                                board,
+                                new String[] {"func_96530_a", "setObjectiveInDisplaySlot"},
+                                1,
+                                objective);
+                        String[] rows = {
+                            "\u00a77Mapa: Lighthouse",
+                            " ",
+                            "\u00a7cR \u00a7fVermelho \u00a7a\u2714",
+                            "\u00a79B \u00a7fAzul \u00a7a\u2714",
+                            "  ",
+                            "\u00a7fKills: \u00a7a3",
+                            "\u00a7eantagon.studio"
+                        };
+                        for (int i = 0; i < rows.length; i++)
+                            call(
+                                    call(
+                                            board,
+                                            new String[] {"func_96529_a", "getValueFromObjective"},
+                                            rows[i],
+                                            objective),
+                                    new String[] {"func_96647_c", "setScorePoints"},
+                                    rows.length - i);
+                        config.setProperty("scoreboard", "true");
+                        config.setProperty("hitdelay", "true");
+                    }
+                    break;
+                case 412:
+                    shot("antagon-scoreboard.png");
+                    config.setProperty("scoreboard.bg", "off");
+                    config.setProperty("scoreboard.numbers", "off");
+                    config.setProperty("scoreboard.size", "80%");
+                    break;
+                case 420:
+                    shot("antagon-scoreboard-clean.png");
+                    System.out.println(
+                            "[ANTAGON TEST] leftClickCounter " + field(mc, "field_71429_W"));
+                    break;
                 case 700:
                     call(mc, new String[] {"func_71400_g", "shutdown"});
                     break;
@@ -1473,7 +1583,14 @@ public class AntagonHud {
             parts.add(new float[] {-half, -gap - len - half, t, len});
             parts.add(new float[] {-half, gap + t - half, t, len});
         }
-        if (!style.equals("cruz")) parts.add(new float[] {-half, -half, t, t});
+        if (style.equals("ponto")) {
+            float r = Math.max(1, len / 2f);
+            for (int y = (int) -Math.ceil(r); y < Math.ceil(r); y++) {
+                float row = y + .5f,
+                        span = (float) Math.floor(Math.sqrt(Math.max(0, r * r - row * row)) + .5f);
+                if (span > 0) parts.add(new float[] {-span, y, span * 2, 1});
+            }
+        } else if (!style.equals("cruz")) parts.add(new float[] {-half, -half, t, t});
         GL11.glPushMatrix();
         GL11.glTranslatef(cx, cy, 0);
         GL11.glScalef(scale, scale, 1);
@@ -1627,9 +1744,121 @@ public class AntagonHud {
             } finally {
                 end();
             }
+            if (enabled("scoreboard") && !flag("scoreboard", "hide")) drawScoreboard(sw, sh);
         } catch (Throwable error) {
             report(error);
         }
+    }
+
+    private void drawScoreboard(float sw, float sh) throws Exception {
+        Object world = field(mc, "field_71441_e", "theWorld");
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        if (world == null || player == null) return;
+        Object board = call(world, new String[] {"func_96441_U", "getScoreboard"});
+        Object objective = null;
+        Object team =
+                call(
+                        board,
+                        new String[] {"func_96509_i", "getPlayersTeam"},
+                        call(player, new String[] {"func_70005_c_", "getName"}));
+        if (team != null) {
+            int color =
+                    ((Number)
+                                    call(
+                                            call(
+                                                    team,
+                                                    new String[] {
+                                                        "func_178775_l", "getChatFormat"
+                                                    }),
+                                            new String[] {"func_175746_b", "getColorIndex"}))
+                            .intValue();
+            if (color >= 0)
+                objective =
+                        call(
+                                board,
+                                new String[] {"func_96539_a", "getObjectiveInDisplaySlot"},
+                                3 + color);
+        }
+        if (objective == null)
+            objective = call(board, new String[] {"func_96539_a", "getObjectiveInDisplaySlot"}, 1);
+        if (objective == null) return;
+        Class<?> teams = Class.forName("net.minecraft.scoreboard.ScorePlayerTeam");
+        List<String[]> lines = new ArrayList<String[]>();
+        for (Object score :
+                (Collection<?>)
+                        call(board, new String[] {"func_96534_i", "getSortedScores"}, objective)) {
+            String name = (String) call(score, new String[] {"func_96653_e", "getPlayerName"});
+            if (name == null || name.startsWith("#")) continue;
+            Object owner = call(board, new String[] {"func_96509_i", "getPlayersTeam"}, name);
+            String text =
+                    (String)
+                            invoke(
+                                    teams,
+                                    null,
+                                    new String[] {"func_96667_a", "formatPlayerName"},
+                                    owner,
+                                    name);
+            lines.add(
+                    new String[] {
+                        text,
+                        "\u00a7c" + call(score, new String[] {"func_96652_c", "getScorePoints"})
+                    });
+        }
+        if (lines.size() > 15) lines = lines.subList(lines.size() - 15, lines.size());
+        Collections.reverse(lines);
+        Object font = field(mc, "field_71466_p", "fontRendererObj");
+        String title = (String) call(objective, new String[] {"func_96678_d", "getDisplayName"});
+        boolean numbers = flag("scoreboard", "numbers"), background = flag("scoreboard", "bg");
+        int width = stringWidth(font, title);
+        for (String[] line : lines)
+            width =
+                    Math.max(
+                            width,
+                            stringWidth(font, line[0])
+                                    + (numbers ? 3 + stringWidth(font, line[1]) : 0));
+        float s = percent("scoreboard", "size"), w = width + 4, h = (lines.size() + 1) * 9 + 1;
+        float x = Math.max(0, Math.min(number("scoreboard.x", sw - w * s - 1), sw - w * s));
+        float y = Math.max(0, Math.min(number("scoreboard.y", sh / 2 - h * s / 3), sh - h * s));
+        bounds.put("scoreboard", new float[] {x, y, w * s, h * s});
+        GL11.glPushMatrix();
+        GL11.glScalef(hudScale, hudScale, 1);
+        GL11.glTranslatef(x, y, 0);
+        GL11.glScalef(s, s, 1);
+        GL11.glEnable(GL11.GL_BLEND);
+        if (background) {
+            rect(0, 0, w, 10, 0x66000000);
+            rect(0, 10, w, h - 10, 0x50000000);
+        }
+        GL11.glColor4f(1, 1, 1, 1);
+        drawString(font, title, (int) (w - stringWidth(font, title)) / 2, 1, 0xFFFFFFFF);
+        for (int i = 0; i < lines.size(); i++) {
+            drawString(font, lines.get(i)[0], 2, 11 + i * 9, 0xFFFFFFFF);
+            if (numbers)
+                drawString(
+                        font,
+                        lines.get(i)[1],
+                        (int) w - 2 - stringWidth(font, lines.get(i)[1]),
+                        11 + i * 9,
+                        0xFFFFFFFF);
+        }
+        GL11.glPopMatrix();
+    }
+
+    private static int stringWidth(Object font, String text) throws Exception {
+        return ((Number) call(font, new String[] {"func_78256_a", "getStringWidth"}, text))
+                .intValue();
+    }
+
+    private static void drawString(Object font, String text, int x, int y, int color)
+            throws Exception {
+        invoke(
+                font.getClass(),
+                font,
+                new String[] {"func_78276_b", "drawString"},
+                text,
+                x,
+                y,
+                color);
     }
 
     private final class Menu extends GuiScreen {
