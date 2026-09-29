@@ -25,7 +25,7 @@ const JAVA = {
     url: 'https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jre8.0.504-win_x64.zip',
     sha256: 'a4f32724c6d819c20372ac069fefa6e6c0319e1d79ba6ce4ee338d4c7e051a12',
     directory: 'zulu8.96.0.205-ca-jre8.0.504-win_x64',
-    executable: 'java.exe',
+    executable: 'javaw.exe',
   },
 }[PLATFORM === 'osx' && process.arch !== 'arm64' ? 'osx-x64' : PLATFORM];
 const NATIVE_FILE = PLATFORM === 'windows' ? /\.dll$/i : /\.(dylib|jnilib)$/;
@@ -393,7 +393,6 @@ class Runtime {
     const child = spawn(installation.java, args, {
       cwd: this.game,
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
     });
     this.child = child;
     const logDir = path.join(this.root, 'logs');

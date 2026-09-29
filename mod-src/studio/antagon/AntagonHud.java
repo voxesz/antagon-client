@@ -293,6 +293,7 @@ public class AntagonHud {
     private int keyOf(String mod, String key) {
         String v = opt(mod, key);
         if (v.equals("ALT")) return Keyboard.KEY_LMENU;
+        if (v.matches("MOUSE\\d{1,2}")) return Integer.parseInt(v.substring(5)) - 101;
         int code = Keyboard.getKeyIndex(v);
         return code == Keyboard.KEY_NONE ? -1 : code;
     }
@@ -306,9 +307,21 @@ public class AntagonHud {
         while (!clicks.isEmpty() && clicks.getFirst() < cutoff) clicks.removeFirst();
     }
 
+    private static boolean isDown(int code) {
+        return code < -1 ? Mouse.isButtonDown(code + 100) : code > 0 && Keyboard.isKeyDown(code);
+    }
+
+    private void radioKey(int code) {
+        if (!enabled("radio")) return;
+        if (code == keyOf("radio", "prev")) Spotify.previous();
+        else if (code == keyOf("radio", "pause")) radioToggle();
+        else if (code == keyOf("radio", "next")) Spotify.next();
+    }
+
     @SubscribeEvent
     public void mouse(MouseEvent event) {
         if (!event.buttonstate) return;
+        if (event.button >= 0) radioKey(event.button - 100);
         if (event.button == 0) left.add(System.currentTimeMillis());
         if (event.button == 1) right.add(System.currentTimeMillis());
     }
@@ -321,10 +334,7 @@ public class AntagonHud {
             openMenu();
             return;
         }
-        if (!enabled("radio")) return;
-        if (k == keyOf("radio", "prev")) Spotify.previous();
-        else if (k == keyOf("radio", "pause")) radioToggle();
-        else if (k == keyOf("radio", "next")) Spotify.next();
+        radioKey(k);
     }
 
     private void openMenu() {
@@ -924,7 +934,7 @@ public class AntagonHud {
                 boolean down = false;
                 if (field(mc, "field_71462_r", "currentScreen") == null) {
                     int k = keyOf("perspective", "key");
-                    down = k > 0 && Keyboard.isKeyDown(k);
+                    down = isDown(k);
                 }
                 if (opt("perspective", "mode").equals("alternar") || smokeLook) {
                     if (down && !lookKeyWas) lookToggled = !lookToggled;
@@ -1100,6 +1110,15 @@ public class AntagonHud {
                 case 362:
                     menu.editing = false;
                     menu.page = "radio";
+                    break;
+                case 378:
+                    menu.binding = "radio.next";
+                    menu.func_73864_a(0, 0, 4);
+                    System.out.println(
+                            "[ANTAGON TEST] mouse bind "
+                                    + config.getProperty("radio.next")
+                                    + " -> "
+                                    + keyOf("radio", "next"));
                     break;
                 case 380:
                     shot("antagon-radio-menu.png");
@@ -1738,7 +1757,7 @@ public class AntagonHud {
                 } else if (opts[k][2].equals("key")) {
                     boolean waiting = (page + "." + opts[k][0]).equals(binding);
                     button(
-                            waiting ? "APERTE..." : v,
+                            waiting ? "APERTE..." : v.replace("MOUSE", "MOUSE "),
                             x0 + PW - 108,
                             ry + 3,
                             92,
@@ -1891,6 +1910,12 @@ public class AntagonHud {
 
         @Override
         protected void func_73864_a(int mx, int my, int button) {
+            if (binding != null) {
+                if (button >= 2) config.setProperty(binding, "MOUSE" + (button + 1));
+                binding = null;
+                save();
+                return;
+            }
             if (button != 0) return;
             if (!editing) {
                 mx = (int) (mx / ms);
