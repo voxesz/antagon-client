@@ -65,7 +65,8 @@ public class AntagonHud {
         "hitcolor",
         "autotext",
         "scoreboard",
-        "hitdelay"
+        "hitdelay",
+        "fullbright"
     };
     private static final String[] NAMES = {
         "FPS",
@@ -87,11 +88,12 @@ public class AntagonHud {
         "HIT COLOR",
         "AUTO TEXT",
         "SCOREBOARD",
-        "HIT DELAY FIX"
+        "HIT DELAY FIX",
+        "FULL BRIGHT"
     };
     private static final boolean[] DEFAULT_ON = {
         true, true, true, false, true, false, false, false, false, false, false, false, false,
-        false, false, false, false, false, false, false
+        false, false, false, false, false, false, false, false
     };
     private static final int AUTOTEXT_SLOTS = 6;
     private long lastAutoText = 0;
@@ -266,6 +268,8 @@ public class AntagonHud {
                 {"hide", "ESCONDER SCOREBOARD", "off,on"}
             };
         if (mod.equals("hitdelay")) return new String[0][];
+        if (mod.equals("fullbright"))
+            return new String[][] {{"shadows", "SEM SOMBRA DAS ENTIDADES", "on,off"}};
         if (mod.equals("notitles"))
             return new String[][] {{"actionbar", "BARRA DE AÇÃO", "off,on"}};
         if (mod.equals("keys"))
@@ -334,6 +338,43 @@ public class AntagonHud {
 
     private static boolean isDown(int code) {
         return code < -1 ? Mouse.isButtonDown(code + 100) : code > 0 && Keyboard.isKeyDown(code);
+    }
+
+    private void fullBright() {
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            boolean on = enabled("fullbright");
+            if (on && config.getProperty("fullbright.gamma") == null) {
+                config.setProperty("fullbright.gamma", "" + getF(settings, "field_74333_Y"));
+                config.setProperty(
+                        "fullbright.entityShadows", "" + field(settings, "field_181151_V"));
+                save();
+            }
+            if (on) {
+                setF(settings, "field_74333_Y", 100f);
+                setField(
+                        settings,
+                        !flag("fullbright", "shadows")
+                                && Boolean.parseBoolean(
+                                        config.getProperty("fullbright.entityShadows", "true")),
+                        "field_181151_V");
+            } else if (config.getProperty("fullbright.gamma") != null) {
+                setF(
+                        settings,
+                        "field_74333_Y",
+                        Float.parseFloat(config.getProperty("fullbright.gamma")));
+                setField(
+                        settings,
+                        Boolean.parseBoolean(
+                                config.getProperty("fullbright.entityShadows", "true")),
+                        "field_181151_V");
+                config.remove("fullbright.gamma");
+                config.remove("fullbright.entityShadows");
+                save();
+            }
+        } catch (Exception e) {
+            report(e);
+        }
     }
 
     private int statusTicks = 0;
@@ -434,6 +475,7 @@ public class AntagonHud {
         sprint();
         chatSettings();
         Hooks.hideScoreboard = enabled("scoreboard");
+        fullBright();
         if (enabled("hitdelay"))
             try {
                 setField(mc, 0, "field_71429_W", "leftClickCounter");
@@ -1239,31 +1281,53 @@ public class AntagonHud {
                     combo = 3;
                     comboAt = System.currentTimeMillis() + 60000;
                     {
-                        Object self = field(mc, "field_71439_g", "thePlayer"),
-                                ws =
-                                        call(
-                                                call(
-                                                        mc,
-                                                        new String[] {
-                                                            "func_71401_C", "getIntegratedServer"
-                                                        }),
-                                                new String[] {
-                                                    "func_71218_a", "worldServerForDimension"
-                                                },
-                                                0);
-                        Object pig =
-                                Class.forName("net.minecraft.entity.passive.EntityPig")
-                                        .getConstructor(Class.forName("net.minecraft.world.World"))
-                                        .newInstance(ws);
+                        final Object self = field(mc, "field_71439_g", "thePlayer");
+                        final Object server =
+                                call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                        final double px = d(self, "field_70165_t"),
+                                py = d(self, "field_70163_u"),
+                                pz = d(self, "field_70161_v");
                         call(
-                                pig,
-                                new String[] {"func_70012_b", "setLocationAndAngles"},
-                                d(self, "field_70165_t") + 1.5,
-                                d(self, "field_70163_u"),
-                                d(self, "field_70161_v") + 3.5,
-                                0f,
-                                0f);
-                        call(ws, new String[] {"func_72838_d", "spawnEntityInWorld"}, pig);
+                                server,
+                                new String[] {"func_152344_a", "addScheduledTask"},
+                                (Runnable)
+                                        () -> {
+                                            try {
+                                                Object ws =
+                                                        call(
+                                                                server,
+                                                                new String[] {
+                                                                    "func_71218_a",
+                                                                    "worldServerForDimension"
+                                                                },
+                                                                0);
+                                                Object pig =
+                                                        Class.forName(
+                                                                        "net.minecraft.entity.passive.EntityPig")
+                                                                .getConstructor(
+                                                                        Class.forName(
+                                                                                "net.minecraft.world.World"))
+                                                                .newInstance(ws);
+                                                call(
+                                                        pig,
+                                                        new String[] {
+                                                            "func_70012_b", "setLocationAndAngles"
+                                                        },
+                                                        px + 1.5,
+                                                        py,
+                                                        pz + 3.5,
+                                                        0f,
+                                                        0f);
+                                                call(
+                                                        ws,
+                                                        new String[] {
+                                                            "func_72838_d", "spawnEntityInWorld"
+                                                        },
+                                                        pig);
+                                            } catch (Exception e) {
+                                                report(e);
+                                            }
+                                        });
                     }
                     break;
                 case 384:
@@ -1367,6 +1431,43 @@ public class AntagonHud {
                     shot("antagon-scoreboard-clean.png");
                     System.out.println(
                             "[ANTAGON TEST] leftClickCounter " + field(mc, "field_71429_W"));
+                    break;
+                case 430:
+                    final Object night =
+                            call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                    call(
+                            night,
+                            new String[] {"func_152344_a", "addScheduledTask"},
+                            (Runnable)
+                                    () -> {
+                                        try {
+                                            call(
+                                                    call(
+                                                            night,
+                                                            new String[] {
+                                                                "func_71218_a",
+                                                                "worldServerForDimension"
+                                                            },
+                                                            0),
+                                                    new String[] {"func_72877_b", "setWorldTime"},
+                                                    18000L);
+                                        } catch (Exception e) {
+                                            report(e);
+                                        }
+                                    });
+                    break;
+                case 450:
+                    shot("antagon-night.png");
+                    config.setProperty("fullbright", "true");
+                    break;
+                case 460:
+                    shot("antagon-fullbright.png");
+                    config.setProperty("fullbright", "false");
+                    break;
+                case 470:
+                    System.out.println(
+                            "[ANTAGON TEST] gamma restored "
+                                    + getF(field(mc, "field_71474_y"), "field_74333_Y"));
                     break;
                 case 700:
                     call(mc, new String[] {"func_71400_g", "shutdown"});
