@@ -19,6 +19,10 @@ final class Spotify {
             Pattern.compile(
                     "(?:open\\.spotify\\.com/(?:intl-[a-z-]+/)?|spotify:)(playlist|album|track)[/:]([A-Za-z0-9]{22})");
 
+    private static final Pattern JAM =
+            Pattern.compile(
+                    "https://(?:open\\.spotify\\.com/socialsession/([A-Za-z0-9]+)|spotify\\.link/([A-Za-z0-9]+))");
+
     private static volatile String windowTitle = "off";
     private static volatile String lastTitle = "", lastArtist = "";
     private static Process watcher;
@@ -28,6 +32,21 @@ final class Spotify {
     static String uri(String link) {
         Matcher m = LINK.matcher(link == null ? "" : link);
         return m.find() ? "spotify:" + m.group(1) + ":" + m.group(2) : null;
+    }
+
+    static String jam(String link) {
+        Matcher m = JAM.matcher(link == null ? "" : link);
+        if (!m.find()) return null;
+        return m.group(1) != null
+                ? "https://open.spotify.com/socialsession/" + m.group(1)
+                : "https://spotify.link/" + m.group(2);
+    }
+
+    static void open(String link) {
+        String url = jam(link);
+        if (url == null) return;
+        if (MAC) async(() -> run("/usr/bin/open", url));
+        else async(() -> run("rundll32", "url.dll,FileProtocolHandler", url));
     }
 
     static String clipboard() {

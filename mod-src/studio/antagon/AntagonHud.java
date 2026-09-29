@@ -218,7 +218,7 @@ public class AntagonHud {
                     new ArrayList<String[]>(
                             Arrays.asList(
                                     new String[][] {
-                                        {"playlist", "PLAYLIST", "action"},
+                                        {"playlist", "PLAYLIST OU JAM", "action"},
                                         {"controls", "CONTROLES", "action"},
                                         {"volume", "VOLUME", "slider"},
                                         SIZE,
@@ -1719,7 +1719,7 @@ public class AntagonHud {
                     String uri = config.getProperty("radio.uri");
                     text(
                             uri == null ? "NENHUMA" : uri.split(":")[1].toUpperCase(),
-                            x0 + 90,
+                            x0 + 150,
                             ry + 3,
                             GRAY);
                     button("COLAR LINK", x0 + PW - 108, ry + 3, 92, 16, mx, my, true);
@@ -1843,9 +1843,17 @@ public class AntagonHud {
         }
 
         private void pastePlaylist() {
-            String uri = Spotify.uri(Spotify.clipboard());
+            String link = Spotify.clipboard();
+            if (Spotify.jam(link) != null) {
+                notice = "ACEITE O CONVITE DA JAM NO SPOTIFY";
+                config.setProperty("radio", "true");
+                save();
+                Spotify.open(link);
+                return;
+            }
+            String uri = Spotify.uri(link);
             if (uri == null) {
-                notice = "COPIE O LINK DE UMA PLAYLIST DO SPOTIFY";
+                notice = "COPIE O LINK DE UMA PLAYLIST OU JAM DO SPOTIFY";
                 return;
             }
             notice = "";
