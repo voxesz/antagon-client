@@ -438,23 +438,41 @@ async function refreshCatalog() {
 function renderCatalog() {
   $('#admin-catalog').innerHTML = adminCatalog.length
     ? adminCatalog
-        .map(
-          (item) =>
-            `<div class="catalog-row"><div class="catalog-thumb">${itemPreview(item)}</div><span><b>${escape(item.name)}</b><small>${item.kind === 'hat' ? 'Acessório' : 'Capa'} · ${item.price} ANTAGOIN$ · ${item.owners} ${item.owners === 1 ? 'dono' : 'donos'}</small></span><span class="catalog-state ${item.active ? 'on' : ''}">${item.active ? 'Na loja' : 'Fora da loja'}</span><button class="secondary" data-catalog-item="${escape(item.id)}" data-active="${item.active ? 1 : 0}">${item.active ? 'Tirar da loja' : 'Colocar na loja'}</button></div>`,
-        )
+        .map((item) => {
+          const id = escape(item.id);
+          const remove = item.custom
+            ? `<button class="danger" data-catalog-action="delete" data-catalog-item="${id}">Excluir</button>`
+            : '';
+          return `<div class="catalog-row"><div class="catalog-thumb">${itemPreview(item)}</div><span><b>${escape(item.name)}</b><small>${item.kind === 'hat' ? 'Acessório' : 'Capa'} · ${item.price} ANTAGOIN$ · ${item.owners} ${item.owners === 1 ? 'dono' : 'donos'}</small></span><span class="catalog-state ${item.active ? 'on' : ''}">${item.active ? 'Na loja' : 'Fora da loja'}</span><div class="catalog-actions"><button class="${item.mine ? 'secondary' : 'primary'}" data-catalog-action="take" data-catalog-item="${id}" data-mine="${item.mine ? 1 : 0}">${item.mine ? 'Devolver' : 'Pegar'}</button><button class="secondary" data-catalog-action="active" data-catalog-item="${id}" data-active="${item.active ? 1 : 0}">${item.active ? 'Tirar da loja' : 'Colocar na loja'}</button>${remove}</div></div>`;
+        })
         .join('')
     : '<p class="admin-empty">Nenhum item cadastrado.</p>';
 }
 $('#admin-catalog').onclick = async (event) => {
-  const button = event.target.closest('[data-catalog-item]');
+  const button = event.target.closest('[data-catalog-action]');
   if (!button || button.disabled) return;
+  const { catalogAction: action, catalogItem: item } = button.dataset;
+  const name = adminCatalog.find((entry) => entry.id === item)?.name || item;
+  if (action === 'delete' && !confirm(`Excluir "${name}"? A capa sai da loja e do inventário de todos os jogadores.`))
+    return;
   button.disabled = true;
   try {
-    adminCatalog = await api.admin.setActive(button.dataset.catalogItem, button.dataset.active !== '1');
+    if (action === 'take') {
+      adminCatalog = await api.admin.take(item, button.dataset.mine !== '1');
+      toast(button.dataset.mine === '1' ? 'Item removido do seu inventário.' : 'Item adicionado ao seu inventário.');
+    } else if (action === 'delete') {
+      adminCatalog = await api.admin.remove(item);
+      toast('Capa excluída.');
+    } else {
+      adminCatalog = await api.admin.setActive(item, button.dataset.active !== '1');
+      toast(
+        button.dataset.active === '1'
+          ? 'Item retirado da loja. Quem já tem continua com ele.'
+          : 'Item de volta à loja.',
+      );
+    }
     renderCatalog();
-    toast(
-      button.dataset.active === '1' ? 'Item retirado da loja. Quem já tem continua com ele.' : 'Item de volta à loja.',
-    );
+    renderAdminTarget();
   } catch (error) {
     toast(error.message);
     button.disabled = false;

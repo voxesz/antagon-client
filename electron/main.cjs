@@ -526,6 +526,8 @@ app.whenReady().then(() => {
   });
   handle('admin:access', () => (needCommunity(), community.access()));
   handle('admin:catalog', () => (needCommunity(), community.adminCatalog()));
+  handle('admin:take', (item, take) => (needCommunity(), community.adminTake(String(item || ''), take)));
+  handle('admin:delete', (item) => (needCommunity(), community.adminDelete(String(item || ''))));
   handle('admin:setActive', (item, active) => (needCommunity(), community.adminSetActive(String(item || ''), active)));
   handle('admin:createCape', (cape) => {
     needCommunity();

@@ -135,6 +135,16 @@ const { DEFAULTS } = require('../electron/settings.cjs');
           owners: 1,
         },
         { id: 'antagon_crown', name: 'Coroa Antagon', kind: 'hat', price: 250, active: true, custom: false, owners: 0 },
+        {
+          id: 'custom_0123456789abcdef',
+          name: 'Capa Teste',
+          kind: 'cape',
+          price: 0,
+          active: false,
+          custom: true,
+          owners: 1,
+          mine: true,
+        },
       ];
       ipcMain.handle('admin:catalog', () => ({ ok: true, value: catalog }));
       ipcMain.handle('admin:createCape', (_event, cape) => {
@@ -161,7 +171,9 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.screenshot({ path: path.join(root, 'build/admin-preview.png') });
 
     await page.click('[data-admin-tab="catalog"]');
-    await page.waitForFunction(() => document.querySelectorAll('#admin-catalog .catalog-row').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('#admin-catalog .catalog-row').length === 4);
+    assert.equal(await page.locator('[data-catalog-action="delete"]').count(), 1);
+    assert.equal(await page.locator('[data-catalog-action="take"][data-mine="1"]').count(), 1);
     assert.match(await page.locator('#admin-catalog').textContent(), /Fora da loja/);
     await page.waitForFunction(() => [...document.querySelectorAll('#admin-catalog img')].every((i) => i.complete));
     await page.screenshot({ path: path.join(root, 'build/admin-catalog.png') });

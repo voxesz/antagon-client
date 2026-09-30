@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('antagon', {
     change: (action, id, value) => call('admin:change', action, id, value),
     catalog: () => call('admin:catalog'),
     setActive: (item, active) => call('admin:setActive', item, active),
+    take: (item, take) => call('admin:take', item, take),
+    remove: (item) => call('admin:delete', item),
     createCape: (cape) => call('admin:createCape', cape),
   },
   init: () => call('app:init'),

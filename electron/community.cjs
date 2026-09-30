@@ -181,6 +181,24 @@ class Community {
     return this.adminCatalog();
   }
 
+  async adminTake(item, take) {
+    const { error } = await this.db.rpc('admin_set_item', {
+      p_target: this.me.id,
+      p_item: item,
+      p_grant: take === true,
+    });
+    if (error) throw Error(error.message || 'Não foi possível alterar seu inventário.');
+    return this.adminCatalog();
+  }
+
+  async adminDelete(item) {
+    if (!/^custom_[a-f0-9]{16}$/.test(item)) throw Error('Só capas criadas no editor podem ser excluídas.');
+    const { error } = await this.db.rpc('admin_delete_item', { p_item: item });
+    if (error) throw Error(error.message || 'Não foi possível excluir o item.');
+    await this.db.storage.from('cosmetics').remove([`${item}.png`]);
+    return this.adminCatalog();
+  }
+
   /** png is a 1024x512 cape texture rendered by the editor; the id is only registered after the upload. */
   async adminCreateCape({ name, price, destination, target, png }) {
     if (!isCapeTexture(png)) throw Error('Textura inválida.');
