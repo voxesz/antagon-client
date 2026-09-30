@@ -17,10 +17,31 @@ if mv "$2" "$2.old" && mv "$3" "$2"; then rm -rf "$2.old"; else [ -d "$2" ] || m
 open "$2"
 `;
 
-const WINDOWS_SWAP = `param($ProcessId, $Source, $Target, $Executable)
-while (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }
-robocopy $Source $Target /MIR /R:5 /W:1 | Out-Null
-Start-Process -FilePath $Executable
+const WINDOWS_SWAP = `@echo off
+set "LOG=%TEMP%\\antagon-update.log"
+echo %date% %time% start > "%LOG%"
+set /a n=0
+:wait
+set /a n+=1
+if %n% gtr 120 goto copy
+tasklist /FI "PID eq %~1" /NH 2>nul | find "%~1" >nul && goto sleep
+tasklist /FI "IMAGENAME eq Antagon Client.exe" /NH 2>nul | find /I "Antagon Client.exe" >nul && goto sleep
+goto copy
+:sleep
+ping -n 2 127.0.0.1 >nul
+goto wait
+:copy
+set /a t=0
+:retry
+set /a t+=1
+robocopy "%~2" "%~3" /E /R:2 /W:1 /NP /NFL /NDL /LOG+:"%LOG%" >nul
+if not errorlevel 8 goto done
+if %t% geq 15 goto done
+ping -n 3 127.0.0.1 >nul
+goto retry
+:done
+echo %date% %time% robocopy %errorlevel% after %t% tries >> "%LOG%"
+start "" "%~4"
 `;
 
 function newer(latest, current) {
@@ -63,18 +84,19 @@ async function install(update, progress) {
   const unpacked = path.join(dir, 'new');
   await download(update, zip, progress);
   await fsp.mkdir(unpacked);
-  const script = path.join(dir, process.platform === 'win32' ? 'swap.ps1' : 'swap.sh');
+  const script = path.join(dir, process.platform === 'win32' ? 'swap.cmd' : 'swap.sh');
 
   if (process.platform === 'win32') {
     await extract(zip, unpacked);
     const fresh = path.join(unpacked, 'Antagon Client-win32-x64');
     if (!fs.existsSync(path.join(fresh, 'Antagon Client.exe'))) throw Error('Atualização inválida.');
-    await fsp.writeFile(script, WINDOWS_SWAP);
-    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script];
-    spawn('powershell.exe', [...args, String(process.pid), fresh, path.dirname(process.execPath), process.execPath], {
+    await fsp.writeFile(script, WINDOWS_SWAP.replaceAll('\n', '\r\n'));
+    const args = [script, String(process.pid), fresh, path.dirname(process.execPath), process.execPath];
+    spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${args.map((a) => `"${a}"`).join(' ')}"`], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
+      windowsVerbatimArguments: true,
     }).unref();
   } else {
     await runFile('/usr/bin/ditto', ['-x', '-k', zip, unpacked]);
