@@ -168,11 +168,54 @@ class Community {
     return true;
   }
 
+  async adminCatalog() {
+    const { data, error } = await this.db.rpc('admin_catalog');
+    if (error) throw Error(error.message || 'Não foi possível carregar os itens.');
+    return data || [];
+  }
+
+  async adminSetActive(item, active) {
+    if (!/^[a-z0-9_]{1,40}$/.test(item)) throw Error('Item inválido.');
+    const { error } = await this.db.rpc('admin_set_active', { p_item: item, p_active: active === true });
+    if (error) throw Error(error.message || 'Não foi possível alterar o item.');
+    return this.adminCatalog();
+  }
+
+  /** png is a 1024x512 cape texture rendered by the editor; the id is only registered after the upload. */
+  async adminCreateCape({ name, price, destination, target, png }) {
+    if (!isCapeTexture(png)) throw Error('Textura inválida.');
+    name = String(name || '').trim();
+    if (!name || name.length > 40) throw Error('Dê um nome de até 40 caracteres.');
+    price = destination === 'store' ? Number(price) : 0;
+    if (!Number.isInteger(price) || price < 0 || price > 100000) throw Error('Preço inválido.');
+    if (!['store', 'player', 'me'].includes(destination)) throw Error('Destino inválido.');
+    const owner =
+      destination === 'player'
+        ? (await this.adminFind(String(target || '').trim())).user_id
+        : destination === 'me'
+          ? this.me.id
+          : null;
+    const id = 'custom_' + require('node:crypto').randomBytes(8).toString('hex');
+    const upload = await this.db.storage
+      .from('cosmetics')
+      .upload(`${id}.png`, png, { contentType: 'image/png', upsert: false });
+    if (upload.error) throw Error('Não foi possível enviar a imagem.');
+    const { error } = await this.db.rpc('admin_create_cape', {
+      p_id: id,
+      p_name: name,
+      p_price: price,
+      p_active: destination === 'store',
+      p_target: owner,
+    });
+    if (error) throw Error(error.message || 'Não foi possível criar a capa.');
+    return id;
+  }
+
   async store() {
     if (!this.me) throw Error('Entre na comunidade primeiro.');
     await this.requireActive();
     const [catalog, wallet, owned, equipped] = await Promise.all([
-      this.db.from('cosmetic_catalog').select('id, name, kind, price').order('price'),
+      this.db.from('cosmetic_catalog').select('id, name, kind, price, active, custom').order('price'),
       this.db.from('coin_wallets').select('balance').eq('user_id', this.me.id).maybeSingle(),
       this.db.from('owned_cosmetics').select('item_id').eq('user_id', this.me.id),
       this.db.from('equipped_cosmetics').select('kind, item_id').eq('user_id', this.me.id),
@@ -195,7 +238,8 @@ class Community {
   }
 
   async equip(item, kind = 'cape') {
-    if (kind !== 'cape' || (item !== null && !/^[a-z0-9_]{1,40}$/.test(item))) throw Error('Item inválido.');
+    if (!['cape', 'hat'].includes(kind) || (item !== null && !/^[a-z0-9_]{1,40}$/.test(item)))
+      throw Error('Item inválido.');
     const { error } = await this.db.rpc('equip_cosmetic', { p_item: item, p_kind: kind });
     if (error) throw Error('Não foi possível equipar o item.');
     return this.store();
@@ -324,4 +368,20 @@ class Community {
   }
 }
 
-module.exports = { Community, validateId };
+function cosmeticUrl(id) {
+  if (!/^custom_[a-f0-9]{16}$/.test(id)) throw Error('Item inválido.');
+  return `${SUPABASE_URL}/storage/v1/object/public/cosmetics/${id}.png`;
+}
+
+function isCapeTexture(png) {
+  return (
+    Buffer.isBuffer(png) &&
+    png.length > 33 &&
+    png.length <= 2 * 1024 * 1024 &&
+    png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
+    png.readUInt32BE(16) === 1024 &&
+    png.readUInt32BE(20) === 512
+  );
+}
+
+module.exports = { Community, validateId, cosmeticUrl, isCapeTexture };

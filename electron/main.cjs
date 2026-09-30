@@ -8,7 +8,7 @@ const { Auth } = require('msmc');
 const { Runtime } = require('./runtime.cjs');
 const { atomicWrite: atomic, readTail } = require('./files.cjs');
 const updater = require('./updater.cjs');
-const { Community } = require('./community.cjs');
+const { Community, cosmeticUrl, isCapeTexture } = require('./community.cjs');
 const { DiscordPresence } = require('./discord.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 app.setName('Antagon Client');
@@ -132,7 +132,10 @@ async function gameUiCommand(line) {
   else if (action === 'add') gameUi.notice = await community.add(a.trim());
   else if (action === 'store') gameUi.store = await community.store();
   else if (action === 'buy') gameUi.store = await community.purchase(a);
-  else if (action === 'equip') gameUi.store = await community.equip(a === 'none' ? null : a);
+  else if (action === 'equip') {
+    const item = gameUi.store?.catalog.find((entry) => entry.id === a);
+    if (item) gameUi.store = await community.equip(item.id, item.kind);
+  } else if (action === 'unequip' && ['cape', 'hat'].includes(a)) gameUi.store = await community.equip(null, a);
   else if (action === 'coins') await shell.openExternal(await community.checkout(a));
   else if (action === 'admin')
     return fs.promises.writeFile(path.join(root, 'minecraft/antagon-ui-request.txt'), 'admin');
@@ -176,11 +179,13 @@ async function gameUiSync() {
         }
       }
       if (gameUi.store) {
-        lines.push(`balance=${gameUi.store.balance}`);
-        for (const item of gameUi.store.catalog)
-          lines.push(
-            `item=${[item.id, item.name, item.price, gameUi.store.owned.includes(item.id) ? 1 : 0, gameUi.store.equipped?.cape === item.id ? 1 : 0].map(clean).join('\t')}`,
-          );
+        const { balance, catalog, owned, equipped } = gameUi.store;
+        lines.push(`balance=${balance}`);
+        for (const item of catalog) {
+          if (item.custom) await cosmeticImage(item.id).catch(() => {});
+          const flags = [owned.includes(item.id), equipped?.[item.kind] === item.id, item.active].map(Number);
+          lines.push(`item=${[item.id, item.name, item.price, ...flags, item.kind].map(clean).join('\t')}`);
+        }
       }
     }
     atomic(path.join(game, 'antagon-ui-state.txt'), lines.join('\n') + '\n');
@@ -213,7 +218,17 @@ async function gameActivity() {
     activityReading = false;
   }
 }
-const CAPES = ['antagon_cape', 'antagon_logo_cape'];
+const COSMETIC_ID = /^[a-z0-9_]{1,40}$/;
+/** Custom capes live in Supabase Storage; the game reads them from antagon-capes/<id>.png. */
+async function cosmeticImage(id) {
+  const file = path.join(root, 'minecraft/antagon-capes', `${id}.png`);
+  if (fs.existsSync(file)) return;
+  const res = await fetch(cosmeticUrl(id), { signal: AbortSignal.timeout(2e4) });
+  const png = Buffer.from(await res.arrayBuffer());
+  if (!res.ok || !isCapeTexture(png)) throw Error('Textura inválida.');
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  atomic(file, png);
+}
 async function gameCosmetics() {
   if (cosmeticsReading || !runtime.child || !community?.me) return;
   cosmeticsReading = true;
@@ -221,9 +236,23 @@ async function gameCosmetics() {
     const game = path.join(root, 'minecraft');
     const roster = await fs.promises.readFile(path.join(game, 'antagon-players.txt'), 'utf8').catch(() => '');
     const rows = await community.visibleCosmetics(roster.split(/\s+/));
-    const lines = rows
-      .filter((row) => row.active_client && /^[0-9a-f]{32}$/.test(row.mc_uuid))
-      .map((row) => `${row.mc_uuid}=${CAPES.includes(row.cape) ? row.cape : 'badge'}${row.is_admin ? '_admin' : ''}`);
+    const lines = [];
+    for (const row of rows) {
+      if (!row.active_client || !/^[0-9a-f]{32}$/.test(row.mc_uuid)) continue;
+      const tokens = ['client'];
+      if (COSMETIC_ID.test(row.cape || '')) {
+        const ready =
+          !row.cape.startsWith('custom_') ||
+          (await cosmeticImage(row.cape).then(
+            () => true,
+            () => false,
+          ));
+        if (ready) tokens.push(`cape:${row.cape}`);
+      }
+      if (COSMETIC_ID.test(row.hat || '')) tokens.push(`hat:${row.hat}`);
+      if (row.is_admin) tokens.push('admin');
+      lines.push(`${row.mc_uuid}=${tokens.join(',')}`);
+    }
     atomic(path.join(game, 'antagon-cosmetics.properties'), lines.join('\n') + '\n');
   } catch {
     // Retain the previous snapshot during a temporary network failure.
@@ -482,7 +511,13 @@ app.whenReady().then(() => {
   handle('community:join', (server) => startGame(String(server || '')));
   handle('store:state', () => (needCommunity(), community.store()));
   handle('store:purchase', (item) => (needCommunity(), community.purchase(String(item || ''))));
-  handle('store:equip', (item) => (needCommunity(), community.equip(item === null ? null : String(item || ''))));
+  handle(
+    'store:equip',
+    (item, kind) => (
+      needCommunity(),
+      community.equip(item === null ? null : String(item || ''), String(kind || 'cape'))
+    ),
+  );
   handle('store:checkout', async (pack) => {
     needCommunity();
     const url = await community.checkout(String(pack || ''));
@@ -490,6 +525,13 @@ app.whenReady().then(() => {
     return true;
   });
   handle('admin:access', () => (needCommunity(), community.access()));
+  handle('admin:catalog', () => (needCommunity(), community.adminCatalog()));
+  handle('admin:setActive', (item, active) => (needCommunity(), community.adminSetActive(String(item || ''), active)));
+  handle('admin:createCape', (cape) => {
+    needCommunity();
+    const png = cape?.png instanceof Uint8Array ? Buffer.from(cape.png) : null;
+    return community.adminCreateCape({ ...cape, png });
+  });
   handle('admin:find', (name) => (needCommunity(), community.adminFind(String(name || '').trim())));
   handle(
     'admin:change',

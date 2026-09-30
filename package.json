@@ -1,7 +1,7 @@
 {
   "name": "antagon-client",
   "productName": "Antagon Client",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Minecraft 1.8.9 PvP client for macOS: launcher, HUD mods and a Right Shift menu.",
   "main": "electron/main.cjs",
   "author": "Antagon Studio",

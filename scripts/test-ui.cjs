@@ -92,7 +92,14 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(state.settings.memory, 5);
     assert.equal(state.settings.pack, false);
     await app.evaluate(({ ipcMain }) => {
-      for (const channel of ['community:state', 'admin:access', 'admin:find', 'store:state'])
+      for (const channel of [
+        'community:state',
+        'admin:access',
+        'admin:find',
+        'store:state',
+        'admin:catalog',
+        'admin:createCape',
+      ])
         ipcMain.removeHandler(channel);
       const me = {
         id: '670ffb62-9dfc-4276-8a22-8f51b90691bb',
@@ -116,6 +123,24 @@ const { DEFAULTS } = require('../electron/settings.cjs');
         },
       }));
       ipcMain.handle('store:state', () => ({ ok: false, error: 'Catálogo não publicado.' }));
+      const catalog = [
+        { id: 'antagon_cape', name: 'Capa Antagon', kind: 'cape', price: 100, active: true, custom: false, owners: 3 },
+        {
+          id: 'antagon_logo_cape',
+          name: 'Capa Logo Antagon',
+          kind: 'cape',
+          price: 100,
+          active: false,
+          custom: false,
+          owners: 1,
+        },
+        { id: 'antagon_crown', name: 'Coroa Antagon', kind: 'hat', price: 250, active: true, custom: false, owners: 0 },
+      ];
+      ipcMain.handle('admin:catalog', () => ({ ok: true, value: catalog }));
+      ipcMain.handle('admin:createCape', (_event, cape) => {
+        globalThis.createdCape = { ...cape, png: Buffer.from(cape.png) };
+        return { ok: true, value: 'custom_0123456789abcdef' };
+      });
     });
     await page.reload();
     await page.waitForFunction(() => !document.querySelector('#admin-tab').hidden);
@@ -134,6 +159,69 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.click('#admin-search button');
     assert.equal(await page.locator('#admin-target-name').textContent(), 'Voxesz');
     await page.screenshot({ path: path.join(root, 'build/admin-preview.png') });
+
+    await page.click('[data-admin-tab="catalog"]');
+    await page.waitForFunction(() => document.querySelectorAll('#admin-catalog .catalog-row').length === 3);
+    assert.match(await page.locator('#admin-catalog').textContent(), /Fora da loja/);
+    await page.waitForFunction(() => [...document.querySelectorAll('#admin-catalog img')].every((i) => i.complete));
+    await page.screenshot({ path: path.join(root, 'build/admin-catalog.png') });
+    await page.click('[data-admin-tab="editor"]');
+    await page.fill('#cape-name', 'Capa Teste');
+    await page.fill('#cape-text', 'ANTAGON');
+    await page.setInputFiles('#cape-image', path.join(root, 'assets/antagon-coin.png'));
+    await page.waitForFunction(() => !document.querySelector('#cape-image-clear').hidden);
+    await page.click('[data-destination="player"]');
+    assert.equal(await page.locator('#cape-target').isVisible(), true);
+    await page.fill('#cape-target', 'Amigo');
+    await page.screenshot({ path: path.join(root, 'build/cape-editor.png') });
+    await page.click('#cape-create');
+    await page.waitForFunction(() => /Capa criada/.test(document.querySelector('#toast').textContent));
+    const created = await app.evaluate(
+      () =>
+        globalThis.createdCape && {
+          ...globalThis.createdCape,
+          png: [globalThis.createdCape.png.readUInt32BE(16), globalThis.createdCape.png.readUInt32BE(20)],
+        },
+    );
+    assert.deepEqual(created, {
+      name: 'Capa Teste',
+      price: 100,
+      destination: 'player',
+      target: 'Amigo',
+      png: [1024, 512],
+    });
+
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('store:state');
+      ipcMain.handle('store:state', () => ({
+        ok: true,
+        value: {
+          balance: 350,
+          catalog: [
+            { id: 'antagon_cape', name: 'Capa Antagon', kind: 'cape', price: 100, active: true, custom: false },
+            {
+              id: 'antagon_logo_cape',
+              name: 'Capa Logo Antagon',
+              kind: 'cape',
+              price: 100,
+              active: false,
+              custom: false,
+            },
+            { id: 'antagon_crown', name: 'Coroa Antagon', kind: 'hat', price: 250, active: true, custom: false },
+          ],
+          owned: ['antagon_logo_cape', 'antagon_crown'],
+          equipped: { hat: 'antagon_crown' },
+        },
+      }));
+    });
+    await page.click('[data-view="store"]');
+    await page.waitForFunction(() => document.querySelectorAll('#store-items .store-item').length === 2);
+    assert.doesNotMatch(await page.locator('#store-items').textContent(), /Capa Logo Antagon/);
+    await page.click('[data-store-tab="inventory"]');
+    assert.equal(await page.locator('#store-inventory .store-item').count(), 2);
+    assert.match(await page.locator('#store-inventory').textContent(), /Capa Logo Antagon/);
+    assert.equal(await page.locator('#store-packs').isVisible(), false);
+    await page.screenshot({ path: path.join(root, 'build/inventory-preview.png') });
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log(
       'UI OK: loja, admin, navegação, animações suspensas, movimento reduzido, configurações rápidas, perfil e Discord.',

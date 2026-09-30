@@ -35,13 +35,16 @@ contextBridge.exposeInMainWorld('antagon', {
   store: {
     state: () => call('store:state'),
     purchase: (item) => call('store:purchase', item),
-    equip: (item) => call('store:equip', item),
+    equip: (item, kind) => call('store:equip', item, kind),
     checkout: (pack) => call('store:checkout', pack),
   },
   admin: {
     access: () => call('admin:access'),
     find: (name) => call('admin:find', name),
     change: (action, id, value) => call('admin:change', action, id, value),
+    catalog: () => call('admin:catalog'),
+    setActive: (item, active) => call('admin:setActive', item, active),
+    createCape: (cape) => call('admin:createCape', cape),
   },
   init: () => call('app:init'),
   saveSettings: (s) => call('settings:save', s),

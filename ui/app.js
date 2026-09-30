@@ -268,36 +268,75 @@ async function refreshStore() {
     renderStore();
   }
 }
-const CAPES = {
+const ITEMS = {
   antagon_cape: {
     name: 'Capa Antagon',
+    kind: 'cape',
     image: '../assets/antagon-cape.png',
     description: 'Capa preta com a logo Antagon em vermelho.',
   },
   antagon_logo_cape: {
     name: 'Capa Logo Antagon',
+    kind: 'cape',
     image: '../assets/antagon-logo-cape.png',
     description: 'Capa vermelha com a logo Antagon em alta resolução.',
   },
+  antagon_crown: {
+    name: 'Coroa Antagon',
+    kind: 'hat',
+    image: '../assets/antagon-crown.png',
+    description: 'Coroa dourada em 3D sobre a cabeça.',
+  },
 };
+const cosmeticUrl = (id) =>
+  /^custom_[a-f0-9]{16}$/.test(id)
+    ? `https://pnlemlqvuqftantunwcw.supabase.co/storage/v1/object/public/cosmetics/${id}.png`
+    : '';
+function itemPreview(item) {
+  if (item.custom) return `<div class="cape-face" style="background-image: url('${cosmeticUrl(item.id)}')"></div>`;
+  const meta = ITEMS[item.id] || ITEMS.antagon_cape;
+  return `<img class="${item.kind === 'hat' ? 'hat' : ''}" src="${meta.image}" alt="" />`;
+}
+const itemDescription = (item) =>
+  ITEMS[item.id]?.description || (item.kind === 'hat' ? 'Acessório para a cabeça.' : 'Capa exclusiva.');
+let storeTab = 'shop';
+function storeCard(item, available) {
+  const owned = storeState?.owned?.includes(item.id);
+  const equipped = storeState?.equipped?.[item.kind] === item.id;
+  const action = owned ? (equipped ? 'unequip' : 'equip') : 'purchase';
+  const label = !available ? 'Em breve' : owned ? (equipped ? 'Desequipar' : 'Equipar') : 'Comprar';
+  const price = owned
+    ? `<span class="item-owned">${equipped ? 'Equipado' : 'No inventário'}</span>`
+    : `<span class="item-price"><img src="../assets/antagon-coin.png" alt="" />${item.price} ANTAGOIN$</span>`;
+  return `<article class="store-item"><div class="cape-preview">${itemPreview(item)}</div><div><h3>${escape(item.name)}</h3><p>${escape(itemDescription(item))}</p>${price}</div><button class="${equipped ? 'secondary' : 'primary'}" data-store-item="${escape(item.id)}" data-store-kind="${item.kind}" data-store-action="${action}" ${available ? '' : 'disabled'}>${label}</button></article>`;
+}
 function renderStore() {
   const available = !!storeState?.catalog?.length;
   const catalog = available
     ? storeState.catalog
-    : Object.entries(CAPES).map(([id, cape]) => ({ id, name: cape.name, kind: 'cape', price: 100 }));
+    : Object.entries(ITEMS).map(([id, item]) => ({ id, name: item.name, kind: item.kind, price: 100, active: true }));
   $('#coin-balance').textContent = (storeState?.balance || 0).toLocaleString('pt-BR');
   $('#store-message').hidden = available;
   $('#store-message').textContent = available ? '' : 'Prévia do item. O catálogo ainda não está ativo neste servidor.';
   $$('.coin-packs button').forEach((button) => (button.disabled = !available));
+  $$('#store-tabs [data-store-tab]').forEach((b) => b.classList.toggle('active', b.dataset.storeTab === storeTab));
+  $('#store-items').hidden = $('#store-packs').hidden = storeTab !== 'shop';
+  $('#store-inventory').hidden = storeTab !== 'inventory';
   $('#store-items').innerHTML = catalog
-    .map((item) => {
-      const owned = storeState?.owned?.includes(item.id);
-      const equipped = storeState?.equipped?.[item.kind] === item.id;
-      const cape = CAPES[item.id] || CAPES.antagon_cape;
-      return `<article class="store-item"><div class="cape-preview"><img src="${cape.image}" alt="${escape(cape.description)}" /></div><div><h3>${escape(item.name)}</h3><p>${escape(cape.description)}</p><span class="item-price"><img src="../assets/antagon-coin.png" alt="" />${item.price} moedas</span></div><button class="primary" data-store-item="${escape(item.id)}" data-store-action="${owned ? (equipped ? 'unequip' : 'equip') : 'purchase'}" ${available ? '' : 'disabled'}>${available ? (owned ? (equipped ? 'Desequipar' : 'Equipar') : 'Comprar') : 'Em breve'}</button></article>`;
-    })
+    .filter((item) => item.active)
+    .map((item) => storeCard(item, available))
     .join('');
+  const owned = catalog.filter((item) => storeState?.owned?.includes(item.id));
+  $('#store-inventory').innerHTML = owned.length
+    ? owned.map((item) => storeCard(item, true)).join('')
+    : '<p class="admin-empty">Você ainda não tem cosméticos. Os itens comprados ou recebidos aparecem aqui, mesmo se saírem da loja.</p>';
 }
+$('#store-tabs').onclick = (event) => {
+  const button = event.target.closest('[data-store-tab]');
+  if (!button) return;
+  storeTab = button.dataset.storeTab;
+  renderStore();
+};
 
 async function refreshAdminAccess() {
   if (!people.me) {
@@ -311,6 +350,7 @@ async function refreshAdminAccess() {
   }
   $('#admin-tab').hidden = !adminAccess.isAdmin;
   $('#profile-admin').hidden = !adminAccess.isAdmin;
+  if (adminAccess.isAdmin) refreshCatalog();
   if (!adminAccess.isAdmin) {
     adminTarget = null;
     $('#admin-result').hidden = true;
@@ -329,10 +369,10 @@ function renderAdminTarget() {
   $('#admin-head').src = `https://mc-heads.net/avatar/${user.mc_uuid}/48`;
   $('#admin-target-role').hidden = !user.is_admin;
   $('#admin-coins').value = user.coins;
-  $('#admin-items').innerHTML = Object.entries(CAPES)
-    .map(([id, cape]) => {
-      const owned = user.items.includes(id);
-      return `<div class="admin-item"><span>${escape(cape.name)}<small>${owned ? 'No inventário' : 'Não adquirida'}</small></span><button class="${owned ? 'secondary' : 'primary'}" data-admin-action="item" data-item="${id}">${owned ? 'Remover' : 'Dar capa'}</button></div>`;
+  $('#admin-items').innerHTML = adminCatalog
+    .map((item) => {
+      const owned = user.items.includes(item.id);
+      return `<div class="admin-item"><span>${escape(item.name)}<small>${owned ? 'No inventário' : 'Não possui'}</small></span><button class="${owned ? 'secondary' : 'primary'}" data-admin-action="item" data-item="${escape(item.id)}">${owned ? 'Remover' : 'Dar item'}</button></div>`;
     })
     .join('');
   $('#admin-role-card').hidden = !adminAccess.isOwner || user.user_id === people.me?.id || user.is_owner;
@@ -385,6 +425,172 @@ $('#admin-result').onclick = async (event) => {
     button.disabled = false;
   }
 };
+let adminCatalog = [];
+async function refreshCatalog() {
+  try {
+    adminCatalog = await api.admin.catalog();
+  } catch (error) {
+    toast(error.message);
+  }
+  renderCatalog();
+  renderAdminTarget();
+}
+function renderCatalog() {
+  $('#admin-catalog').innerHTML = adminCatalog.length
+    ? adminCatalog
+        .map(
+          (item) =>
+            `<div class="catalog-row"><div class="catalog-thumb">${itemPreview(item)}</div><span><b>${escape(item.name)}</b><small>${item.kind === 'hat' ? 'Acessório' : 'Capa'} · ${item.price} ANTAGOIN$ · ${item.owners} ${item.owners === 1 ? 'dono' : 'donos'}</small></span><span class="catalog-state ${item.active ? 'on' : ''}">${item.active ? 'Na loja' : 'Fora da loja'}</span><button class="secondary" data-catalog-item="${escape(item.id)}" data-active="${item.active ? 1 : 0}">${item.active ? 'Tirar da loja' : 'Colocar na loja'}</button></div>`,
+        )
+        .join('')
+    : '<p class="admin-empty">Nenhum item cadastrado.</p>';
+}
+$('#admin-catalog').onclick = async (event) => {
+  const button = event.target.closest('[data-catalog-item]');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    adminCatalog = await api.admin.setActive(button.dataset.catalogItem, button.dataset.active !== '1');
+    renderCatalog();
+    toast(
+      button.dataset.active === '1' ? 'Item retirado da loja. Quem já tem continua com ele.' : 'Item de volta à loja.',
+    );
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
+};
+$('#admin-tabs').onclick = (event) => {
+  const button = event.target.closest('[data-admin-tab]');
+  if (!button) return;
+  $$('#admin-tabs [data-admin-tab]').forEach((b) => b.classList.toggle('active', b === button));
+  for (const tab of ['players', 'editor', 'catalog']) $(`#admin-${tab}`).hidden = tab !== button.dataset.adminTab;
+  if (button.dataset.adminTab === 'catalog') refreshCatalog();
+  if (button.dataset.adminTab === 'editor') drawCape();
+};
+
+// Cape editor. The canvas is the visible face of the cape (10x16 Minecraft pixels at 16x).
+const cape = {
+  canvas: $('#cape-canvas'),
+  image: null,
+  text: { x: 80, y: 128 },
+  picture: { x: 80, y: 128 },
+  drag: null,
+  destination: 'store',
+};
+function drawCape() {
+  const g = cape.canvas.getContext('2d');
+  g.fillStyle = $('#cape-bg').value;
+  g.fillRect(0, 0, 160, 256);
+  if (cape.image) {
+    const w = (160 * Number($('#cape-image-size').value)) / 100,
+      h = (w * cape.image.naturalHeight) / cape.image.naturalWidth;
+    g.drawImage(cape.image, cape.picture.x - w / 2, cape.picture.y - h / 2, w, h);
+  }
+  const text = $('#cape-text').value.trim();
+  if (text) {
+    g.font = `${$('#cape-text-size').value}px Pixelify`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = $('#cape-text-color').value;
+    g.fillText(text, cape.text.x, cape.text.y);
+  }
+}
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${[16, 8, 0].map((bit) => Math.round(((n >> bit) & 255) * amount)).join(',')})`;
+}
+function capeTexture() {
+  const out = document.createElement('canvas');
+  out.width = 1024;
+  out.height = 512;
+  const g = out.getContext('2d');
+  g.fillStyle = shade($('#cape-bg').value, 0.6);
+  g.fillRect(0, 0, 22 * 16, 17 * 16);
+  g.drawImage(cape.canvas, 16, 16);
+  return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+}
+function capePoint(event) {
+  const rect = cape.canvas.getBoundingClientRect();
+  return { x: ((event.clientX - rect.left) * 160) / rect.width, y: ((event.clientY - rect.top) * 256) / rect.height };
+}
+cape.canvas.onpointerdown = (event) => {
+  const p = capePoint(event),
+    g = cape.canvas.getContext('2d'),
+    text = $('#cape-text').value.trim();
+  g.font = `${$('#cape-text-size').value}px Pixelify`;
+  const size = Number($('#cape-text-size').value),
+    onText =
+      text &&
+      Math.abs(p.x - cape.text.x) < g.measureText(text).width / 2 + 4 &&
+      Math.abs(p.y - cape.text.y) < size / 2 + 4;
+  const target = onText || !cape.image ? cape.text : cape.picture;
+  cape.drag = { target, dx: target.x - p.x, dy: target.y - p.y };
+  cape.canvas.setPointerCapture(event.pointerId);
+};
+cape.canvas.onpointermove = (event) => {
+  if (!cape.drag) return;
+  const p = capePoint(event);
+  cape.drag.target.x = Math.round(p.x + cape.drag.dx);
+  cape.drag.target.y = Math.round(p.y + cape.drag.dy);
+  drawCape();
+};
+cape.canvas.onpointerup = cape.canvas.onpointercancel = () => (cape.drag = null);
+for (const id of ['#cape-bg', '#cape-text', '#cape-text-color', '#cape-text-size', '#cape-image-size'])
+  $(id).oninput = drawCape;
+$('#cape-image-pick').onclick = () => $('#cape-image').click();
+$('#cape-image').onchange = () => {
+  const file = $('#cape-image').files[0];
+  if (!file) return;
+  const image = new Image();
+  image.onload = () => {
+    cape.image = image;
+    cape.picture = { x: 80, y: 128 };
+    $('#cape-image-size').value = 100;
+    $('#cape-image-clear').hidden = false;
+    drawCape();
+  };
+  image.onerror = () => toast('Não foi possível abrir a imagem.');
+  image.src = URL.createObjectURL(file);
+};
+$('#cape-image-clear').onclick = () => {
+  cape.image = null;
+  $('#cape-image').value = '';
+  $('#cape-image-clear').hidden = true;
+  drawCape();
+};
+$('#cape-destination').onclick = (event) => {
+  const button = event.target.closest('[data-destination]');
+  if (!button) return;
+  cape.destination = button.dataset.destination;
+  $$('#cape-destination button').forEach((b) => b.classList.toggle('active', b === button));
+  $('#cape-price-field').hidden = cape.destination !== 'store';
+  $('#cape-target-field').hidden = cape.destination !== 'player';
+};
+action('#cape-create', async () => {
+  const name = $('#cape-name').value.trim();
+  if (!name) return toast('Dê um nome para a capa.');
+  if (cape.destination === 'player' && !$('#cape-target').value.trim()) return toast('Informe o nick do jogador.');
+  const png = new Uint8Array(await (await capeTexture()).arrayBuffer());
+  await api.admin.createCape({
+    name,
+    price: Number($('#cape-price').value),
+    destination: cape.destination,
+    target: $('#cape-target').value.trim(),
+    png,
+  });
+  toast(
+    cape.destination === 'store'
+      ? 'Capa criada e colocada na loja.'
+      : cape.destination === 'player'
+        ? 'Capa criada e enviada ao jogador.'
+        : 'Capa criada no seu inventário.',
+  );
+  $('#cape-name').value = '';
+  refreshCatalog();
+});
+document.fonts?.load('40px Pixelify').then(drawCape, drawCape);
+
 $('#store-login').onclick = async () => {
   if (settings?.mode !== 'microsoft' || !account) return $('#profile-open').click();
   try {
@@ -396,7 +602,7 @@ $('#store-login').onclick = async () => {
   }
 };
 action('#store-refresh', refreshStore);
-$('#store-items').onclick = async (event) => {
+$('#store-content').onclick = async (event) => {
   const button = event.target.closest('[data-store-item]');
   if (!button || button.disabled) return;
   button.disabled = true;
@@ -404,7 +610,10 @@ $('#store-items').onclick = async (event) => {
     storeState =
       button.dataset.storeAction === 'purchase'
         ? await api.store.purchase(button.dataset.storeItem)
-        : await api.store.equip(button.dataset.storeAction === 'unequip' ? null : button.dataset.storeItem);
+        : await api.store.equip(
+            button.dataset.storeAction === 'unequip' ? null : button.dataset.storeItem,
+            button.dataset.storeKind,
+          );
     renderStore();
   } catch (error) {
     toast(error.message);

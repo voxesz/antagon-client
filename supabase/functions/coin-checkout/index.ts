@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'brl',
     'line_items[0][price_data][unit_amount]': String(chosen.cents),
-    'line_items[0][price_data][product_data][name]': `${chosen.coins} Moedas Antagon`,
+    'line_items[0][price_data][product_data][name]': `${chosen.coins} ANTAGOIN$`,
     success_url: returnUrl,
     cancel_url: returnUrl,
   });

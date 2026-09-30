@@ -26,6 +26,8 @@ const screenshots = [
   'antagon-logo-cape.png',
   'antagon-hub-friends.png',
   'antagon-hub-store.png',
+  'antagon-hub-inventory.png',
+  'antagon-crown.png',
   'antagon-item-physics.png',
 ];
 
@@ -89,6 +91,7 @@ async function main() {
       throw Error('A capa Antagon não foi aplicada na renderização do jogador.');
     if (!logfile.includes('[ANTAGON] Menu icons rendered'))
       throw Error('Os ícones Antagon não apareceram nos botões do jogo.');
+    if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
     if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
       throw Error('O botão da loja não abriu a loja dentro do jogo.');
     for (const name of screenshots) {

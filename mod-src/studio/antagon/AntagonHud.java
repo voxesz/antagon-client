@@ -534,6 +534,7 @@ public class AntagonHud {
             }
         if (event.phase != TickEvent.Phase.END) return;
         Cosmetics.tick(mc);
+        Cosmetics.installLayers(mc);
         boolean pressed = Keyboard.isKeyDown(Keyboard.KEY_F8);
         if (pressed && !f8) hidden = !hidden;
         f8 = pressed;
@@ -1692,19 +1693,46 @@ public class AntagonHud {
                                 call(player, new String[] {"func_146103_bH", "getGameProfile"});
                         String uuid =
                                 call(profile, new String[] {"getId"}).toString().replace("-", "");
+                        BufferedImage texture =
+                                new BufferedImage(1024, 512, BufferedImage.TYPE_INT_ARGB);
+                        java.awt.Graphics2D g = texture.createGraphics();
+                        g.setColor(new java.awt.Color(0x14285A));
+                        g.fillRect(0, 0, 352, 272);
+                        g.setColor(new java.awt.Color(0x2A5BD7));
+                        g.fillRect(16, 16, 160, 256);
+                        g.setColor(java.awt.Color.WHITE);
+                        g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 44));
+                        g.drawString("TESTE", 26, 150);
+                        g.dispose();
+                        new File("antagon-capes").mkdirs();
+                        ImageIO.write(
+                                texture,
+                                "png",
+                                new File("antagon-capes/custom_0123456789abcdef.png"));
                         Files.write(
                                 new File("antagon-cosmetics.properties").toPath(),
-                                (uuid + "=antagon_logo_cape_admin\n")
+                                (uuid
+                                                + "=client,cape:custom_0123456789abcdef,hat:antagon_crown,admin\n")
                                         .getBytes(StandardCharsets.UTF_8));
                         setField(
                                 field(mc, "field_71474_y", "gameSettings"),
                                 1,
                                 "field_74320_O",
                                 "thirdPersonView");
+                        config.setProperty("fullbright", "true");
                     }
                     break;
                 case 640:
                     shot("antagon-logo-cape.png");
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            2,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 645:
+                    shot("antagon-crown.png");
+                    config.setProperty("fullbright", "false");
                     setField(
                             field(mc, "field_71474_y", "gameSettings"),
                             0,
@@ -1735,8 +1763,12 @@ public class AntagonHud {
                                         + "msg=0\t19:02\tbora um bedwars?\n"
                                         + "msg=1\t19:03\tbora! me chama no servidor\n"
                                         + "balance=250\n"
-                                        + "item=antagon_cape\tCapa Antagon\t100\t1\t0\n"
-                                        + "item=antagon_logo_cape\tCapa Logo Antagon\t100\t1\t1\n";
+                                        + "item=antagon_cape\tCapa Antagon\t100\t0\t0\t1\tcape\n"
+                                        + "item=antagon_logo_cape\tCapa Logo Antagon\t100\t1\t0\t0"
+                                        + "\tcape\n"
+                                        + "item=antagon_crown\tCoroa Antagon\t250\t1\t1\t1\that\n"
+                                        + "item=custom_0123456789abcdef\tCapa Teste\t0\t1\t1\t0"
+                                        + "\tcape\n";
                         Files.write(
                                 new File("antagon-ui-state.txt").toPath(),
                                 state.getBytes(StandardCharsets.UTF_8));
@@ -1752,6 +1784,10 @@ public class AntagonHud {
                     break;
                 case 670:
                     shot("antagon-hub-store.png");
+                    smokeHub.tab = "inventory";
+                    break;
+                case 673:
+                    shot("antagon-hub-inventory.png");
                     call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
                     break;
                 case 675:
@@ -3084,7 +3120,10 @@ public class AntagonHud {
         Integer id = resourceTextures.get(name);
         if (id != null) return id;
         BufferedImage img;
-        try (InputStream in = getClass().getResourceAsStream("/assets/antagon/" + name)) {
+        try (InputStream in =
+                name.startsWith("file:")
+                        ? new FileInputStream(name.substring(5))
+                        : getClass().getResourceAsStream("/assets/antagon/" + name)) {
             img = ImageIO.read(in);
         }
         ByteBuffer pixels = BufferUtils.createByteBuffer(img.getWidth() * img.getHeight() * 4);
@@ -3163,7 +3202,7 @@ public class AntagonHud {
         long lastRead = 0, updated = 0;
         boolean online = false;
         String me = "", notice = "", chat = null, typing = null, addText = "", chatText = "";
-        int balance = -1, listScroll = 0;
+        int balance = -1, listScroll = 0, page = 0;
         final List<String[]> friends = new ArrayList<String[]>(),
                 incoming = new ArrayList<String[]>(),
                 outgoing = new ArrayList<String[]>(),
@@ -3222,7 +3261,7 @@ public class AntagonHud {
                     else if (key.equals("chat")) stateChat = v[0];
                     else if (key.equals("msg") && v.length >= 3) messages.add(v);
                     else if (key.equals("balance")) balance = Integer.parseInt(v[0]);
-                    else if (key.equals("item") && v.length >= 5) items.add(v);
+                    else if (key.equals("item") && v.length >= 7) items.add(v);
                 }
                 if (chat != null && !chat.equals(stateChat)) messages.clear();
             } catch (Exception e) {
@@ -3295,18 +3334,19 @@ public class AntagonHud {
                 outline(x0, y0, W, H, 0xFF353539);
                 image("logo.png", x0 + 12, y0 + 8, 16, 16, 0, 0, 1, 1);
                 text("ANTAGON", x0 + 34, y0 + 8, WHITE);
-                String[] tabs = {"friends", "store"}, labels = {"AMIGOS", "LOJA"};
-                for (int i = 0; i < 2; i++) {
-                    float tx = x0 + 120 + i * 84;
+                String[] tabs = {"friends", "store", "inventory"},
+                        labels = {"AMIGOS", "LOJA", "INVENTÁRIO"};
+                for (int i = 0; i < tabs.length; i++) {
+                    float tx = x0 + 116 + i * 100, tw = 94;
                     boolean active = tabs[i].equals(tab);
-                    rect(tx, y0 + 6, 78, 20, active ? 0xFF3A1A1C : 0xFF2C2C30);
-                    if (active) rect(tx, y0 + 24, 78, 2, RED);
+                    rect(tx, y0 + 6, tw, 20, active ? 0xFF3A1A1C : 0xFF2C2C30);
+                    if (active) rect(tx, y0 + 24, tw, 2, RED);
                     text(
                             labels[i],
-                            tx + (78 - width(labels[i])) / 2,
+                            tx + (tw - width(labels[i])) / 2,
                             y0 + 8,
                             active ? WHITE : GRAY);
-                    hits.put("tab:" + tabs[i], new float[] {tx, y0 + 6, 78, 20});
+                    hits.put("tab:" + tabs[i], new float[] {tx, y0 + 6, tw, 20});
                 }
                 button("close", "X", x0 + W - 28, y0 + 6, 18, 20, mx, my, false);
                 rect(x0 + 10, y0 + 32, W - 20, 1, 0xFF303035);
@@ -3318,7 +3358,7 @@ public class AntagonHud {
                                     : "ENTRE COM SUA CONTA MICROSOFT NO LAUNCHER.";
                     text(line, x0 + (W - width(line)) / 2, y0 + H / 2 - 8, GRAY);
                 } else if (tab.equals("friends")) drawFriends(mx, my);
-                else drawStore(mx, my);
+                else drawStore(mx, my, tab.equals("inventory"));
                 if (!notice.isEmpty()) text(fit(notice, W - 24), x0 + 12, y0 + H - 16, GRAY);
             } catch (Throwable e) {
                 report(e);
@@ -3441,50 +3481,85 @@ public class AntagonHud {
             return out;
         }
 
-        void drawStore(int mx, int my) throws Exception {
+        /**
+         * Cape previews show the outer face; custom capes are read from the launcher's download.
+         */
+        void preview(String[] item, float x, float y) throws Exception {
+            if (item[6].equals("hat")) {
+                image("crown-preview.png", x - 16, y + 18, 72, 32, 0, 0, 1, 1);
+                return;
+            }
+            String texture = item[0].equals("antagon_logo_cape") ? "logo-cape.png" : "cape.png";
+            if (item[0].startsWith("custom_")) {
+                texture = "file:antagon-capes/" + item[0] + ".png";
+                if (!new File(texture.substring(5)).isFile()) {
+                    rect(x, y, 40, 64, 0xFF2C2C30);
+                    return;
+                }
+            }
+            image(texture, x, y, 40, 64, 1 / 64f, 1 / 32f, 11 / 64f, 17 / 32f);
+        }
+
+        void drawStore(int mx, int my, boolean inventory) throws Exception {
             float top = y0 + 40;
             image("store.png", x0 + 12, top, 16, 16, 0, 0, 1, 1);
             text(
-                    (balance < 0 ? "--" : String.valueOf(balance)) + " MOEDAS",
+                    (balance < 0 ? "--" : String.valueOf(balance)) + " ANTAGOIN$",
                     x0 + 32,
                     top + 1,
                     WHITE);
-            float cardW = 132, cardH = 150, gap = 10, cx = x0 + 12;
-            for (String[] item : items) {
-                float cy = top + 24;
-                rect(cx, cy, cardW, cardH, 0xFF232327);
-                outline(cx, cy, cardW, cardH, item[4].equals("1") ? RED : 0xFF303035);
-                String texture = item[0].equals("antagon_logo_cape") ? "logo-cape.png" : "cape.png";
-                image(
-                        texture,
-                        cx + (cardW - 40) / 2,
-                        cy + 8,
-                        40,
-                        64,
-                        1 / 64f,
-                        1 / 32f,
-                        11 / 64f,
-                        17 / 32f);
-                text(fit(item[1].toUpperCase(), cardW - 10), cx + 6, cy + 78, WHITE);
-                text(item[2] + " MOEDAS", cx + 6, cy + 92, GRAY);
+            List<String[]> shown = new ArrayList<String[]>();
+            for (String[] item : items)
+                if ((inventory ? item[3] : item[5]).equals("1")) shown.add(item);
+            int per = 4, pages = Math.max(1, (shown.size() + per - 1) / per);
+            page = Math.max(0, Math.min(page, pages - 1));
+            if (pages > 1) {
+                String label = (page + 1) + "/" + pages;
+                text(label, x0 + W - 58 - width(label), top + 1, GRAY);
+                button("page:-1", "<", x0 + W - 52, top - 2, 18, 18, mx, my, false);
+                button("page:1", ">", x0 + W - 30, top - 2, 18, 18, mx, my, false);
+            }
+            float cardW = 100, cardH = inventory ? 176 : 150, gap = 8, cy = top + 24;
+            if (shown.isEmpty()) {
+                String line =
+                        inventory
+                                ? "VOCÊ AINDA NÃO TEM COSMÉTICOS."
+                                : "NENHUM ITEM À VENDA NO MOMENTO.";
+                text(line, x0 + (W - width(line)) / 2, cy + 50, GRAY);
+            }
+            float cx = x0 + (W - (per * cardW + (per - 1) * gap)) / 2;
+            for (int i = page * per; i < Math.min(shown.size(), page * per + per); i++) {
+                String[] item = shown.get(i);
                 boolean owned = item[3].equals("1"), equipped = item[4].equals("1");
+                rect(cx, cy, cardW, cardH, 0xFF232327);
+                outline(cx, cy, cardW, cardH, equipped ? RED : 0xFF303035);
+                preview(item, cx + (cardW - 40) / 2, cy + 8);
+                List<String> name = wrap(item[1].toUpperCase(), cardW - 10);
+                for (int l = 0; l < Math.min(2, name.size()); l++)
+                    text(name.get(l), cx + 6, cy + 76 + l * 13, WHITE);
+                String state =
+                        equipped ? "EQUIPADO" : owned ? "NO INVENTÁRIO" : item[2] + " ANTAGOIN$";
+                text(fit(state, cardW - 10), cx + 6, cy + 104, equipped ? RED : GRAY);
                 String label = equipped ? "TIRAR" : owned ? "EQUIPAR" : "COMPRAR";
                 String action =
-                        equipped ? "equip:none" : owned ? "equip:" + item[0] : "buy:" + item[0];
+                        equipped
+                                ? "unequip:" + item[6]
+                                : owned ? "equip:" + item[0] : "buy:" + item[0];
                 button(action, label, cx + 6, cy + cardH - 26, cardW - 12, 20, mx, my, !equipped);
                 cx += cardW + gap;
             }
+            if (inventory) return;
             String[][] packs = {
-                {"small", "100 MOEDAS", "R$ 4,90"},
-                {"medium", "550 MOEDAS", "R$ 19,90"},
-                {"large", "1.200 MOEDAS", "R$ 39,90"}
+                {"small", "100", "R$ 4,90"},
+                {"medium", "550", "R$ 19,90"},
+                {"large", "1.200", "R$ 39,90"}
             };
-            float py = top + 24 + cardH + 12;
-            text("COMPRAR MOEDAS (ABRE NO NAVEGADOR)", x0 + 12, py, GRAY);
+            float py = cy + cardH + 12;
+            text("COMPRAR ANTAGOIN$ (ABRE NO NAVEGADOR)", x0 + 12, py, GRAY);
             for (int i = 0; i < packs.length; i++)
                 button(
                         "coins:" + packs[i][0],
-                        packs[i][1] + "  " + packs[i][2],
+                        packs[i][1] + " ANTAGOIN$  " + packs[i][2],
                         x0 + 12 + i * 146,
                         py + 14,
                         140,
@@ -3560,7 +3635,8 @@ public class AntagonHud {
             if (hit.equals("close")) close();
             else if (hit.startsWith("tab:")) {
                 tab = hit.substring(4);
-                if (tab.equals("store")) command("store");
+                page = 0;
+                if (!tab.equals("friends")) command("store");
             } else if (hit.startsWith("field:")) typing = hit.substring(6);
             else if (hit.equals("add")) {
                 typing = "add";
@@ -3578,6 +3654,8 @@ public class AntagonHud {
             else if (hit.startsWith("remove:")) command("remove", hit.substring(7));
             else if (hit.startsWith("buy:")) command("buy", hit.substring(4));
             else if (hit.startsWith("equip:")) command("equip", hit.substring(6));
+            else if (hit.startsWith("unequip:")) command("unequip", hit.substring(8));
+            else if (hit.startsWith("page:")) page += Integer.parseInt(hit.substring(5));
             else if (hit.startsWith("coins:")) command("coins", hit.substring(6));
             else if (hit.startsWith("join:")) joinServer(hit.substring(5));
         }

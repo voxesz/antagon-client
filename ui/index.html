@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://mc-heads.net; font-src 'self'; connect-src 'none';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc-heads.net https://pnlemlqvuqftantunwcw.supabase.co; font-src 'self'; connect-src 'none';"
     />
     <title>Antagon Client</title>
     <link rel="stylesheet" href="style.css" />
@@ -91,7 +91,7 @@
               <p>Personalize seu jogador. Outros usuários do Antagon veem sua capa e sua tag.</p>
             </div>
             <div class="wallet">
-              <img src="../assets/antagon-coin.png" alt="" /><strong id="coin-balance">0</strong><span>moedas</span>
+              <img src="../assets/antagon-coin.png" alt="" /><strong id="coin-balance">0</strong><span>ANTAGOIN$</span>
             </div>
           </div>
           <div class="store-gate" id="store-gate">
@@ -99,25 +99,31 @@
             <button class="primary" id="store-login">Conectar</button>
           </div>
           <div id="store-content" hidden>
-            <h2>Capas</h2>
+            <div class="segmented sub-tabs" id="store-tabs">
+              <button class="active" data-store-tab="shop">Loja</button
+              ><button data-store-tab="inventory">Inventário</button>
+            </div>
             <p id="store-message" class="store-message" hidden></p>
             <div id="store-items" class="store-items"></div>
-            <h2>Adquirir moedas</h2>
-            <p class="store-note">
-              O pagamento abre no navegador. As moedas aparecem após a confirmação; clique em Atualizar saldo.
-            </p>
-            <div class="coin-packs">
-              <button data-pack="small">
-                <img src="../assets/antagon-coin.png" alt="" /><b>100 moedas</b><span>R$ 4,90</span>
-              </button>
-              <button data-pack="medium">
-                <img src="../assets/antagon-coin.png" alt="" /><b>550 moedas</b><span>R$ 19,90</span>
-              </button>
-              <button data-pack="large">
-                <img src="../assets/antagon-coin.png" alt="" /><b>1.200 moedas</b><span>R$ 39,90</span>
-              </button>
+            <div id="store-inventory" class="store-items" hidden></div>
+            <div id="store-packs">
+              <h2>Adquirir ANTAGOIN$</h2>
+              <p class="store-note">
+                O pagamento abre no navegador. Os ANTAGOIN$ aparecem após a confirmação; clique em Atualizar saldo.
+              </p>
+              <div class="coin-packs">
+                <button data-pack="small">
+                  <img src="../assets/antagon-coin.png" alt="" /><b>100 ANTAGOIN$</b><span>R$ 4,90</span>
+                </button>
+                <button data-pack="medium">
+                  <img src="../assets/antagon-coin.png" alt="" /><b>550 ANTAGOIN$</b><span>R$ 19,90</span>
+                </button>
+                <button data-pack="large">
+                  <img src="../assets/antagon-coin.png" alt="" /><b>1.200 ANTAGOIN$</b><span>R$ 39,90</span>
+                </button>
+              </div>
+              <button class="secondary store-refresh" id="store-refresh">Atualizar saldo</button>
             </div>
-            <button class="secondary store-refresh" id="store-refresh">Atualizar saldo</button>
           </div>
         </div>
       </section>
@@ -128,61 +134,109 @@
             <span class="admin-badge">ADMIN</span>
             <h1>Painel administrativo</h1>
           </div>
-          <p>Busque um usuário registrado pelo nick do Minecraft para gerenciar acesso, moedas e cosméticos.</p>
-          <form id="admin-search" class="admin-search">
-            <input
-              id="admin-name"
-              maxlength="32"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Nick ou UUID do jogador"
-            />
-            <button class="primary">Buscar usuário</button>
-          </form>
-          <div id="admin-result" hidden>
-            <div class="admin-person">
-              <img id="admin-head" class="head" alt="" />
-              <div>
-                <h2 id="admin-target-name"></h2>
-                <small id="admin-target-id"></small>
+          <div class="segmented sub-tabs" id="admin-tabs">
+            <button class="active" data-admin-tab="players">Jogadores</button
+            ><button data-admin-tab="editor">Criar capa</button><button data-admin-tab="catalog">Itens</button>
+          </div>
+          <div id="admin-players">
+            <p>Busque um usuário registrado pelo nick do Minecraft para gerenciar acesso, ANTAGOIN$ e cosméticos.</p>
+            <form id="admin-search" class="admin-search">
+              <input
+                id="admin-name"
+                maxlength="32"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Nick ou UUID do jogador"
+              />
+              <button class="primary">Buscar usuário</button>
+            </form>
+            <div id="admin-result" hidden>
+              <div class="admin-person">
+                <img id="admin-head" class="head" alt="" />
+                <div>
+                  <h2 id="admin-target-name"></h2>
+                  <small id="admin-target-id"></small>
+                </div>
+                <span id="admin-target-role" class="admin-badge" hidden>ADMIN</span>
               </div>
-              <span id="admin-target-role" class="admin-badge" hidden>ADMIN</span>
+              <div class="admin-grid">
+                <div class="admin-card">
+                  <h3>ANTAGOIN$</h3>
+                  <p>Defina o saldo total do jogador.</p>
+                  <div class="admin-control">
+                    <input id="admin-coins" type="number" min="0" max="10000000" step="1" /><button
+                      class="primary"
+                      data-admin-action="coins"
+                    >
+                      Salvar saldo
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-card">
+                  <h3>Cosméticos</h3>
+                  <div id="admin-items" class="admin-items"></div>
+                </div>
+                <div class="admin-card" id="admin-role-card">
+                  <h3>Cargo</h3>
+                  <p>Somente o proprietário pode conceder ou remover administradores.</p>
+                  <div class="admin-control">
+                    <button class="secondary" id="admin-role-button" data-admin-action="role">Tornar admin</button>
+                  </div>
+                </div>
+                <div class="admin-card">
+                  <h3>Acesso ao client</h3>
+                  <p id="admin-ban-status">Conta ativa</p>
+                  <input id="admin-ban-reason" maxlength="240" placeholder="Motivo do banimento" />
+                  <div class="admin-control">
+                    <button class="danger" id="admin-ban-button" data-admin-action="ban">Banir usuário</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="admin-grid">
-              <div class="admin-card">
-                <h3>Moedas</h3>
-                <p>Defina o saldo total do jogador.</p>
-                <div class="admin-control">
-                  <input id="admin-coins" type="number" min="0" max="10000000" step="1" /><button
-                    class="primary"
-                    data-admin-action="coins"
-                  >
-                    Salvar saldo
-                  </button>
-                </div>
+            <p id="admin-empty" class="admin-empty">Busque um jogador para começar.</p>
+          </div>
+          <div id="admin-editor" class="cape-editor" hidden>
+            <div class="editor-stage">
+              <canvas id="cape-canvas" width="160" height="256"></canvas>
+              <small>Arraste o texto ou a imagem para posicionar.</small>
+            </div>
+            <div class="editor-controls">
+              <label
+                >Nome da capa<input id="cape-name" maxlength="40" autocomplete="off" placeholder="Capa Exemplo"
+              /></label>
+              <div class="editor-row">
+                <label>Fundo<input type="color" id="cape-bg" value="#1a1a1a" /></label>
+                <label>Texto<input id="cape-text" maxlength="24" autocomplete="off" placeholder="ANTAGON" /></label>
+                <label>Cor<input type="color" id="cape-text-color" value="#ee1515" /></label>
               </div>
-              <div class="admin-card">
-                <h3>Capas</h3>
-                <div id="admin-items" class="admin-items"></div>
+              <label>Tamanho do texto<input type="range" id="cape-text-size" min="10" max="120" value="26" /></label>
+              <div class="editor-row">
+                <button class="secondary" id="cape-image-pick">Enviar imagem</button
+                ><button class="secondary" id="cape-image-clear" hidden>Remover imagem</button>
+                <input type="file" id="cape-image" accept="image/png,image/jpeg,image/webp" hidden />
               </div>
-              <div class="admin-card" id="admin-role-card">
-                <h3>Cargo</h3>
-                <p>Somente o proprietário pode conceder ou remover administradores.</p>
-                <div class="admin-control">
-                  <button class="secondary" id="admin-role-button" data-admin-action="role">Tornar admin</button>
-                </div>
+              <label>Tamanho da imagem<input type="range" id="cape-image-size" min="10" max="300" value="100" /></label>
+              <p class="editor-help">
+                A parte visível da capa tem proporção <b>5:8</b> (10 × 16 pixels do Minecraft). Para preencher sem
+                cortes, envie uma imagem de <b>640 × 1024 px</b> ou outra na proporção 5:8; em 100% ela ocupa a largura
+                toda. PNG com transparência funciona. A textura final tem 1024 × 512 px; as bordas e o lado de dentro
+                usam a cor de fundo escurecida.
+              </p>
+              <div class="segmented" id="cape-destination">
+                <button class="active" data-destination="store">Loja</button
+                ><button data-destination="player">Enviar para jogador</button
+                ><button data-destination="me">Só para mim</button>
               </div>
-              <div class="admin-card">
-                <h3>Acesso ao client</h3>
-                <p id="admin-ban-status">Conta ativa</p>
-                <input id="admin-ban-reason" maxlength="240" placeholder="Motivo do banimento" />
-                <div class="admin-control">
-                  <button class="danger" id="admin-ban-button" data-admin-action="ban">Banir usuário</button>
-                </div>
-              </div>
+              <label id="cape-price-field"
+                >Preço em ANTAGOIN$<input id="cape-price" type="number" min="0" max="100000" value="100"
+              /></label>
+              <label id="cape-target-field" hidden
+                >Nick do jogador<input id="cape-target" maxlength="32" autocomplete="off" spellcheck="false"
+              /></label>
+              <button class="primary" id="cape-create">Criar capa</button>
             </div>
           </div>
-          <p id="admin-empty" class="admin-empty">Busque um jogador para começar.</p>
+          <div id="admin-catalog" class="admin-catalog" hidden></div>
         </div>
       </section>
 

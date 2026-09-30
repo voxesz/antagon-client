@@ -40,8 +40,10 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Atualização automática pelas Releases do GitHub
 - Discord Rich Presence integrado, com controle de privacidade do servidor
 - Fundos animados suspensos fora da tela inicial e durante o jogo
-- Loja de cosméticos: Moedas Antagon, capa preta com a logo vermelha e inventário associado à conta Microsoft
-- Tag Antagon no chat e no tab, e capas visíveis para outros jogadores com o client e sessão de comunidade ativa
+- Loja de cosméticos com ANTAGOIN$: capas, Coroa Antagon em 3D e inventário associado à conta Microsoft (itens retirados
+  da loja continuam no inventário de quem já tem)
+- Tag Antagon no chat, logo ao lado do ping no tab (dourada para admins), e cosméticos visíveis para outros jogadores com
+  o client e sessão de comunidade ativa
 
 **Mods** (configuráveis pelo Shift direito). O botão Antagon no menu inicial abre as configurações do launcher. No Esc,
 os atalhos acima de **Abrir para LAN** abrem Configurações, Amigos e Loja; administradores também veem Admin.
@@ -115,7 +117,7 @@ Configure os segredos `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` e `CHECKOUT_R
 o Checkout). Registre na Stripe um endpoint para `https://<project-ref>.supabase.co/functions/v1/coin-webhook` com os
 eventos `checkout.session.completed` e `checkout.session.async_payment_succeeded`. A função do webhook tem
 `verify_jwt = false` porque a Stripe não envia JWT do Supabase; ela valida a assinatura do corpo recebido. Os pacotes
-custam R$ 4,90 (100 moedas), R$ 19,90 (550) e R$ 39,90 (1.200). A capa de teste custa 100 moedas.
+custam R$ 4,90 (100 ANTAGOIN$), R$ 19,90 (550) e R$ 39,90 (1.200). As capas custam 100 ANTAGOIN$ e a coroa, 250.
 
 O pagamento é concluído no navegador. Use **Atualizar saldo** na loja depois de voltar. A tag no chat é adicionada a
 mensagens nos formatos `<Nick>` e `Nick:` (com prefixo opcional `[Rank]`); servidores com outros formatos podem não exibi-la. O tab usa a tag para
@@ -123,7 +125,9 @@ qualquer jogador autenticado com o client ativo. Contas offline não participam 
 
 A migração `20260930010000_admin.sql` concede o cargo de proprietário ao UUID verificado da conta **Voxesz** e cria o
 painel **Admin**. O proprietário pode nomear ou remover outros administradores. Administradores podem buscar jogadores
-registrados pelo nick, banir ou desbanir contas, definir o saldo de moedas e conceder ou remover cosméticos. Todas as
+registrados pelo nick, banir ou desbanir contas, definir o saldo de ANTAGOIN$ e conceder ou remover cosméticos. A aba **Criar capa** monta uma capa com
+texto e imagem (face visível 5:8, textura final 1024 × 512 enviada ao bucket público `cosmetics`) e a coloca na loja,
+envia para um jogador ou deixa só no inventário do admin; a aba **Itens** tira ou recoloca itens na loja. Todas as
 mudanças ficam registradas em `admin_audit`; as permissões são verificadas no banco. O banimento bloqueia login,
 comunidade, loja e jogo com a conta Microsoft no launcher distribuído. O modo offline e cópias modificadas do client
 não podem ser bloqueados com segurança sem um servidor de jogo ou serviço de autorização obrigatório.
