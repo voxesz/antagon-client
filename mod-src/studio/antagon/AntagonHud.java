@@ -5,8 +5,10 @@ import static studio.antagon.Reflect.*;
 
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
@@ -29,6 +31,9 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.net.URL;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.*;
@@ -44,6 +49,13 @@ import javax.imageio.ImageIO;
         acceptableRemoteVersions = "*")
 public class AntagonHud {
     private static final int RED = 0xFFEE1515, WHITE = 0xFFF0EEE8, GRAY = 0xFF8A8883;
+    private static final int MENU_BUTTON_ID = 0xA71A;
+    private static final int SETTINGS_BUTTON_ID = 0xA71B,
+            FRIENDS_BUTTON_ID = 0xA71C,
+            STORE_BUTTON_ID = 0xA71D,
+            ADMIN_BUTTON_ID = 0xA71E;
+    private static final File UI_REQUEST = new File("antagon-ui-request.txt");
+    private static final File SESSION = new File("antagon-session.properties");
     private Object mc;
     private Class<?> minecraft;
     private final LinkedList<Long> left = new LinkedList<Long>(), right = new LinkedList<Long>();
@@ -80,6 +92,9 @@ public class AntagonHud {
     private volatile long radioStamp = 0;
     private volatile BufferedImage artPending;
     private int artTexture = 0;
+    private boolean menuLogoLogged = false;
+    private boolean capeRenderLogged = false;
+    private final Map<String, Object> menuIcons = new HashMap<String, Object>();
     private String lastChat = null;
     private int chatId = 0x5A0000, chatCount = 0;
     private static final String YAW = "field_70177_z",
@@ -293,10 +308,219 @@ public class AntagonHud {
     }
 
     private void openMenu() {
+        openMenu(null);
+    }
+
+    private void openMenu(GuiScreen parent) {
         try {
-            call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new Menu());
+            call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new Menu(parent));
         } catch (Exception e) {
             System.err.println("[ANTAGON] Menu error: " + e);
+        }
+    }
+
+    @SubscribeEvent
+    public void menuButtons(GuiScreenEvent.InitGuiEvent.Post event) {
+        try {
+            Object gui = field(event, "gui");
+            String name = gui.getClass().getName();
+            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
+                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            @SuppressWarnings("unchecked")
+            List<Object> buttons = (List<Object>) field(event, "buttonList");
+            for (Object button : buttons)
+                if (((Number) field(button, "field_146127_k", "id")).intValue() == MENU_BUTTON_ID)
+                    return;
+            if (name.equals("net.minecraft.client.gui.GuiIngameMenu")) {
+                Object lan = null;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 7)
+                        lan = button;
+                if (lan == null) return;
+                int lanX = ((Number) field(lan, "field_146128_h", "xPosition")).intValue();
+                int lanY = ((Number) field(lan, "field_146129_i", "yPosition")).intValue();
+                int rowWidth = ((Number) field(lan, "field_146120_f", "width")).intValue();
+                for (Object button : buttons) {
+                    int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+                    setField(button, y + (y < lanY ? -12 : 12), "field_146129_i", "yPosition");
+                }
+                int[] ids =
+                        sessionAdmin()
+                                ? new int[] {
+                                    SETTINGS_BUTTON_ID,
+                                    FRIENDS_BUTTON_ID,
+                                    STORE_BUTTON_ID,
+                                    ADMIN_BUTTON_ID
+                                }
+                                : new int[] {
+                                    SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, STORE_BUTTON_ID
+                                };
+                int gap = 4, size = 20, total = ids.length * size + (ids.length - 1) * gap;
+                int x = lanX + (rowWidth - total) / 2;
+                for (int id : ids) {
+                    buttons.add(newButton(id, x, lanY - 12, size, ""));
+                    x += size + gap;
+                }
+            } else {
+                Object quit = null;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 4)
+                        quit = button;
+                if (quit == null) return;
+                int quitX = ((Number) field(quit, "field_146128_h", "xPosition")).intValue();
+                int y = ((Number) field(quit, "field_146129_i", "yPosition")).intValue() + 24;
+                buttons.add(newButton(MENU_BUTTON_ID, quitX - 102, y, 200, "Antagon"));
+            }
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private Object newButton(int id, int x, int y, int width, String label) throws Exception {
+        return Class.forName("net.minecraft.client.gui.GuiButton")
+                .getConstructor(int.class, int.class, int.class, int.class, int.class, String.class)
+                .newInstance(id, x, y, width, 20, label);
+    }
+
+    private boolean sessionAdmin() {
+        try (FileInputStream input = new FileInputStream(SESSION)) {
+            Properties role = new Properties();
+            role.load(input);
+            return "true".equals(role.getProperty("admin"));
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    @SubscribeEvent
+    public void menuButtonLogo(GuiScreenEvent.DrawScreenEvent.Post event) {
+        try {
+            Object gui = field(event, "gui");
+            String name = gui.getClass().getName();
+            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
+                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            @SuppressWarnings("unchecked")
+            List<Object> buttons = (List<Object>) field(gui, "field_146292_n", "buttonList");
+            int mouseX = ((Number) field(event, "mouseX")).intValue();
+            int mouseY = ((Number) field(event, "mouseY")).intValue();
+            String tooltip = null;
+            for (Object button : buttons) {
+                int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+                String icon =
+                        id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID
+                                ? "logo"
+                                : id == FRIENDS_BUTTON_ID
+                                        ? "chat"
+                                        : id == STORE_BUTTON_ID
+                                                ? "store"
+                                                : id == ADMIN_BUTTON_ID ? "admin" : null;
+                if (icon == null) continue;
+                int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
+                int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+                int width = ((Number) field(button, "field_146120_f", "width")).intValue();
+                drawMenuIcon(icon, id == MENU_BUTTON_ID ? x + width / 2 - 39 : x + 2, y + 2);
+                if (id != MENU_BUTTON_ID
+                        && mouseX >= x
+                        && mouseX < x + width
+                        && mouseY >= y
+                        && mouseY < y + 20)
+                    tooltip =
+                            id == SETTINGS_BUTTON_ID
+                                    ? "Configurações Antagon"
+                                    : id == FRIENDS_BUTTON_ID
+                                            ? "Amigos e chat"
+                                            : id == STORE_BUTTON_ID
+                                                    ? "Loja de cosméticos"
+                                                    : "Admin";
+                if (!menuLogoLogged) {
+                    System.out.println("[ANTAGON] Menu icons rendered");
+                    menuLogoLogged = true;
+                }
+            }
+            if (tooltip != null)
+                call(
+                        gui,
+                        new String[] {"func_146283_a", "drawHoveringText"},
+                        Collections.singletonList(tooltip),
+                        mouseX,
+                        mouseY);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void drawMenuIcon(String icon, int x, int y) throws Exception {
+        Object location = menuIcons.get(icon);
+        if (location == null) {
+            location =
+                    Class.forName("net.minecraft.util.ResourceLocation")
+                            .getConstructor(String.class, String.class)
+                            .newInstance("antagon", icon + ".png");
+            menuIcons.put(icon, location);
+        }
+        Class<?> state = Class.forName("net.minecraft.client.renderer.GlStateManager");
+        invoke(state, null, new String[] {"func_179147_l", "enableBlend"});
+        invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        call(textures, new String[] {"func_110577_a", "bindTexture"}, location);
+        invoke(
+                Class.forName("net.minecraft.client.gui.Gui"),
+                null,
+                new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                x,
+                y,
+                0f,
+                0f,
+                16,
+                16,
+                16f,
+                16f);
+    }
+
+    @SubscribeEvent
+    public void menuButtonClick(GuiScreenEvent.ActionPerformedEvent.Pre event) {
+        try {
+            Object button = field(event, "button");
+            int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+            GuiScreen screen = (GuiScreen) field(event, "gui");
+            if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
+            else if (id == FRIENDS_BUTTON_ID || id == STORE_BUTTON_ID)
+                call(
+                        mc,
+                        new String[] {"func_147108_a", "displayGuiScreen"},
+                        new Hub(screen, id == FRIENDS_BUTTON_ID ? "friends" : "store"));
+            else if (id == ADMIN_BUTTON_ID && sessionAdmin()) requestLauncherView("admin");
+            else return;
+            event.setCanceled(true);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void requestLauncherView(String view) throws IOException {
+        File temporary = new File("antagon-ui-request.tmp");
+        Files.write(temporary.toPath(), view.getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(
+                    temporary.toPath(),
+                    UI_REQUEST.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            Files.move(
+                    temporary.toPath(), UI_REQUEST.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    @SubscribeEvent
+    public void renderPlayer(RenderPlayerEvent.Pre event) {
+        try {
+            Cosmetics.beforeRender(field(event, "entityPlayer"));
+            if (!capeRenderLogged) {
+                System.out.println("[ANTAGON] Player render cape bridge active");
+                capeRenderLogged = true;
+            }
+        } catch (Exception ignored) {
         }
     }
 
@@ -309,6 +533,7 @@ public class AntagonHud {
                 report(e);
             }
         if (event.phase != TickEvent.Phase.END) return;
+        Cosmetics.tick(mc);
         boolean pressed = Keyboard.isKeyDown(Keyboard.KEY_F8);
         if (pressed && !f8) hidden = !hidden;
         f8 = pressed;
@@ -321,6 +546,7 @@ public class AntagonHud {
         sprint();
         chatSettings();
         Hooks.hideScoreboard = enabled("scoreboard");
+        Hooks.itemPhysics = enabled("itemphysics");
         fullBright();
         if (enabled("hitdelay"))
             try {
@@ -481,6 +707,7 @@ public class AntagonHud {
 
     @SubscribeEvent
     public void chat(ClientChatReceivedEvent event) {
+        Cosmetics.chat(event);
         if (!enabled("chat")) return;
         try {
             Object message = field(event, "message");
@@ -524,6 +751,16 @@ public class AntagonHud {
         } catch (Exception e) {
             report(e);
         }
+    }
+
+    @SubscribeEvent
+    public void cosmeticsTabBefore(RenderGameOverlayEvent.Pre event) {
+        if (event.type == RenderGameOverlayEvent.ElementType.PLAYER_LIST) Cosmetics.tab(mc, true);
+    }
+
+    @SubscribeEvent
+    public void cosmeticsTabAfter(RenderGameOverlayEvent.Post event) {
+        if (event.type == RenderGameOverlayEvent.ElementType.PLAYER_LIST) Cosmetics.tab(mc, false);
     }
 
     private void radioPlay() {
@@ -971,6 +1208,7 @@ public class AntagonHud {
 
     private void smoke() {
         try {
+            if (!smokeStarted && smokeTicks == 35) shot("antagon-title-buttons.png");
             if (!smokeStarted && ++smokeTicks > 80) {
                 smokeStarted = true;
                 Class<?> ws = Class.forName("net.minecraft.world.WorldSettings");
@@ -992,6 +1230,69 @@ public class AntagonHud {
             }
             if (field(mc, "field_71439_g", "thePlayer") == null) return;
             switch (++worldTicks) {
+                case 140:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            1,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 145:
+                    shot("antagon-cape-test.png");
+                    break;
+                case 150:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 160:
+                    call(
+                            mc,
+                            new String[] {"func_147108_a", "displayGuiScreen"},
+                            Class.forName("net.minecraft.client.gui.GuiIngameMenu").newInstance());
+                    break;
+                case 165:
+                    shot("antagon-pause-buttons.png");
+                    break;
+                case 166:
+                    {
+                        Object screen = field(mc, "field_71462_r", "currentScreen");
+                        @SuppressWarnings("unchecked")
+                        List<Object> buttons =
+                                (List<Object>) field(screen, "field_146292_n", "buttonList");
+                        for (Object button : buttons)
+                            if (((Number) field(button, "field_146127_k", "id")).intValue()
+                                    == STORE_BUTTON_ID) {
+                                int x =
+                                        ((Number) field(button, "field_146128_h", "xPosition"))
+                                                .intValue();
+                                int y =
+                                        ((Number) field(button, "field_146129_i", "yPosition"))
+                                                .intValue();
+                                call(
+                                        screen,
+                                        new String[] {"func_73864_a", "mouseClicked"},
+                                        x + 10,
+                                        y + 10,
+                                        0);
+                                break;
+                            }
+                    }
+                    break;
+                case 167:
+                    {
+                        Object open = field(mc, "field_71462_r", "currentScreen");
+                        if (!(open instanceof Hub) || !((Hub) open).tab.equals("store"))
+                            throw new IllegalStateException(
+                                    "O botão da loja não abriu a loja no jogo");
+                        System.out.println("[ANTAGON TEST] Store button opened the in-game store");
+                    }
+                    break;
+                case 170:
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
                 case 180:
                     shot("antagon-smoke.png");
                     break;
@@ -1366,6 +1667,187 @@ public class AntagonHud {
                     break;
                 case 500:
                     shot("antagon-tab-off.png");
+                    break;
+                case 590:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            1,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 600:
+                    shot("antagon-cape-late.png");
+                    break;
+                case 610:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 620:
+                    {
+                        Object player = field(mc, "field_71439_g", "thePlayer");
+                        Object profile =
+                                call(player, new String[] {"func_146103_bH", "getGameProfile"});
+                        String uuid =
+                                call(profile, new String[] {"getId"}).toString().replace("-", "");
+                        Files.write(
+                                new File("antagon-cosmetics.properties").toPath(),
+                                (uuid + "=antagon_logo_cape_admin\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                        setField(
+                                field(mc, "field_71474_y", "gameSettings"),
+                                1,
+                                "field_74320_O",
+                                "thirdPersonView");
+                    }
+                    break;
+                case 640:
+                    shot("antagon-logo-cape.png");
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    call(
+                            mc,
+                            new String[] {"func_147108_a", "displayGuiScreen"},
+                            Class.forName("net.minecraft.client.gui.GuiIngameMenu").newInstance());
+                    break;
+                case 650:
+                    shot("antagon-pause.png");
+                    {
+                        String friend = "11111111-2222-3333-4444-555555555555";
+                        String state =
+                                "updated="
+                                        + System.currentTimeMillis()
+                                        + "\nonline=1\nme=AntagonTest\nnotice=\n"
+                                        + "friend="
+                                        + friend
+                                        + "\tAmigoTeste\t1\tserver\tmc.hypixel.net\t0\n"
+                                        + "friend=99999999-2222-3333-4444-555555555555"
+                                        + "\tOfflineTeste\t0\toffline\t\t0\n"
+                                        + "incoming=88888888-2222-3333-4444-555555555555\tNovato\n"
+                                        + "chat="
+                                        + friend
+                                        + "\n"
+                                        + "msg=0\t19:02\tbora um bedwars?\n"
+                                        + "msg=1\t19:03\tbora! me chama no servidor\n"
+                                        + "balance=250\n"
+                                        + "item=antagon_cape\tCapa Antagon\t100\t1\t0\n"
+                                        + "item=antagon_logo_cape\tCapa Logo Antagon\t100\t1\t1\n";
+                        Files.write(
+                                new File("antagon-ui-state.txt").toPath(),
+                                state.getBytes(StandardCharsets.UTF_8));
+                        Hub hub = new Hub(null, "friends");
+                        hub.chat = friend;
+                        smokeHub = hub;
+                        call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, hub);
+                    }
+                    break;
+                case 660:
+                    shot("antagon-hub-friends.png");
+                    smokeHub.tab = "store";
+                    break;
+                case 670:
+                    shot("antagon-hub-store.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 675:
+                    {
+                        final Object self = field(mc, "field_71439_g", "thePlayer");
+                        final Object server =
+                                call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                        float yaw = getF(self, YAW);
+                        final double
+                                ix = d(self, "field_70165_t") - Math.sin(Math.toRadians(yaw)) * 1.6,
+                                iy = d(self, "field_70163_u") + 0.5,
+                                iz = d(self, "field_70161_v") + Math.cos(Math.toRadians(yaw)) * 1.6;
+                        call(
+                                server,
+                                new String[] {"func_152344_a", "addScheduledTask"},
+                                (Runnable)
+                                        () -> {
+                                            try {
+                                                Object ws =
+                                                        call(
+                                                                server,
+                                                                new String[] {
+                                                                    "func_71218_a",
+                                                                    "worldServerForDimension"
+                                                                },
+                                                                0);
+                                                Class<?>
+                                                        item =
+                                                                Class.forName(
+                                                                        "net.minecraft.item.Item"),
+                                                        stack =
+                                                                Class.forName(
+                                                                        "net.minecraft.item.ItemStack"),
+                                                        entity =
+                                                                Class.forName(
+                                                                        "net.minecraft.entity.item.EntityItem");
+                                                Object diamond =
+                                                        Class.forName("net.minecraft.init.Items")
+                                                                .getField("field_151045_i")
+                                                                .get(null);
+                                                Object gold =
+                                                        invoke(
+                                                                item,
+                                                                null,
+                                                                new String[] {
+                                                                    "func_150898_a",
+                                                                    "getItemFromBlock"
+                                                                },
+                                                                Class.forName(
+                                                                                "net.minecraft.init.Blocks")
+                                                                        .getField("field_150340_R")
+                                                                        .get(null));
+                                                Object[] drops = {
+                                                    stack.getConstructor(item, int.class)
+                                                            .newInstance(diamond, 16),
+                                                    stack.getConstructor(item, int.class)
+                                                            .newInstance(gold, 8)
+                                                };
+                                                for (int i = 0; i < drops.length; i++) {
+                                                    Object e =
+                                                            entity.getConstructor(
+                                                                            Class.forName(
+                                                                                    "net.minecraft.world.World"),
+                                                                            double.class,
+                                                                            double.class,
+                                                                            double.class,
+                                                                            stack)
+                                                                    .newInstance(
+                                                                            ws,
+                                                                            ix + i * 0.8,
+                                                                            iy,
+                                                                            iz,
+                                                                            drops[i]);
+                                                    setField(
+                                                            e,
+                                                            32767,
+                                                            "field_145804_b",
+                                                            "delayBeforeCanPickup");
+                                                    call(
+                                                            ws,
+                                                            new String[] {
+                                                                "func_72838_d", "spawnEntityInWorld"
+                                                            },
+                                                            e);
+                                                }
+                                            } catch (Exception e) {
+                                                report(e);
+                                            }
+                                        });
+                        config.setProperty("itemphysics", "true");
+                        config.setProperty("fullbright", "true");
+                        setF(self, PITCH, 60f);
+                    }
+                    break;
+                case 695:
+                    shot("antagon-item-physics.png");
                     break;
                 case 700:
                     call(mc, new String[] {"func_71400_g", "shutdown"});
@@ -1799,6 +2281,7 @@ public class AntagonHud {
 
     private final class Menu extends GuiScreen {
         static final int PW = MenuLayout.WIDTH;
+        private final GuiScreen parent;
         int category = 0;
         int[] visibleMods = ModuleRegistry.filter(0);
         float scroll = 0, scrollTarget = 0;
@@ -1813,7 +2296,8 @@ public class AntagonHud {
         boolean editing = false;
         float x0, y0, dx, dy;
 
-        Menu() {
+        Menu(GuiScreen parent) {
+            this.parent = parent;
             menu = this;
         }
 
@@ -1835,7 +2319,7 @@ public class AntagonHud {
 
         void close() {
             try {
-                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
             } catch (Exception e) {
                 report(e);
             }
@@ -2591,6 +3075,617 @@ public class AntagonHud {
                 resizing = null;
                 save();
             }
+        }
+    }
+
+    private final Map<String, Integer> resourceTextures = new HashMap<String, Integer>();
+
+    private int resourceTexture(String name) throws Exception {
+        Integer id = resourceTextures.get(name);
+        if (id != null) return id;
+        BufferedImage img;
+        try (InputStream in = getClass().getResourceAsStream("/assets/antagon/" + name)) {
+            img = ImageIO.read(in);
+        }
+        ByteBuffer pixels = BufferUtils.createByteBuffer(img.getWidth() * img.getHeight() * 4);
+        for (int y = 0; y < img.getHeight(); y++)
+            for (int x = 0; x < img.getWidth(); x++) {
+                int p = img.getRGB(x, y);
+                pixels.put((byte) (p >> 16))
+                        .put((byte) (p >> 8))
+                        .put((byte) p)
+                        .put((byte) (p >> 24));
+            }
+        pixels.flip();
+        id = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GL11.glTexImage2D(
+                GL11.GL_TEXTURE_2D,
+                0,
+                GL11.GL_RGBA,
+                img.getWidth(),
+                img.getHeight(),
+                0,
+                GL11.GL_RGBA,
+                GL11.GL_UNSIGNED_BYTE,
+                pixels);
+        resourceTextures.put(name, id);
+        return id;
+    }
+
+    private void image(
+            String name, float x, float y, float w, float h, float u0, float v0, float u1, float v1)
+            throws Exception {
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, resourceTexture(name));
+        GL11.glColor4f(1, 1, 1, 1);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(u0, v0);
+        GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(u0, v1);
+        GL11.glVertex2f(x, y + h);
+        GL11.glTexCoord2f(u1, v1);
+        GL11.glVertex2f(x + w, y + h);
+        GL11.glTexCoord2f(u1, v0);
+        GL11.glVertex2f(x + w, y);
+        GL11.glEnd();
+    }
+
+    private static String unescapeField(String s) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 1 < s.length()) {
+                char n = s.charAt(++i);
+                out.append(n == 'n' ? '\n' : n == 't' ? '\t' : n);
+            } else out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static String escapeField(String s) {
+        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "");
+    }
+
+    /**
+     * In-game friends, chat and store. The launcher owns the session; this screen only reads its
+     * snapshot (antagon-ui-state.txt) and leaves commands for it (antagon-ui-cmd-*.txt).
+     */
+    private Hub smokeHub;
+
+    private final class Hub extends GuiScreen {
+        static final int W = 460, H = 280;
+        final GuiScreen parent;
+        String tab;
+        float ms = 1, x0, y0;
+        long lastRead = 0, updated = 0;
+        boolean online = false;
+        String me = "", notice = "", chat = null, typing = null, addText = "", chatText = "";
+        int balance = -1, listScroll = 0;
+        final List<String[]> friends = new ArrayList<String[]>(),
+                incoming = new ArrayList<String[]>(),
+                outgoing = new ArrayList<String[]>(),
+                messages = new ArrayList<String[]>(),
+                items = new ArrayList<String[]>();
+        final Map<String, float[]> hits = new LinkedHashMap<String, float[]>();
+
+        Hub(GuiScreen parent, String tab) {
+            this.parent = parent;
+            this.tab = tab;
+            command("store");
+        }
+
+        void command(String... parts) {
+            try {
+                StringBuilder line = new StringBuilder();
+                for (String part : parts)
+                    line.append(line.length() == 0 ? "" : "\t").append(escapeField(part));
+                File temporary = new File("antagon-ui-cmd.tmp");
+                Files.write(temporary.toPath(), line.toString().getBytes(StandardCharsets.UTF_8));
+                Files.move(
+                        temporary.toPath(),
+                        new File("antagon-ui-cmd-" + System.nanoTime() + ".txt").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                report(e);
+            }
+        }
+
+        void read() {
+            if (System.currentTimeMillis() - lastRead < 400) return;
+            lastRead = System.currentTimeMillis();
+            File file = new File("antagon-ui-state.txt");
+            if (!file.isFile()) return;
+            try {
+                List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+                friends.clear();
+                incoming.clear();
+                outgoing.clear();
+                messages.clear();
+                items.clear();
+                String stateChat = null;
+                for (String line : lines) {
+                    int eq = line.indexOf('=');
+                    if (eq < 0) continue;
+                    String key = line.substring(0, eq);
+                    String[] v = line.substring(eq + 1).split("\t", -1);
+                    for (int i = 0; i < v.length; i++) v[i] = unescapeField(v[i]);
+                    if (key.equals("updated")) updated = Long.parseLong(v[0]);
+                    else if (key.equals("online")) online = v[0].equals("1");
+                    else if (key.equals("me")) me = v[0];
+                    else if (key.equals("notice")) notice = v[0];
+                    else if (key.equals("friend") && v.length >= 6) friends.add(v);
+                    else if (key.equals("incoming") && v.length >= 2) incoming.add(v);
+                    else if (key.equals("outgoing") && v.length >= 2) outgoing.add(v);
+                    else if (key.equals("chat")) stateChat = v[0];
+                    else if (key.equals("msg") && v.length >= 3) messages.add(v);
+                    else if (key.equals("balance")) balance = Integer.parseInt(v[0]);
+                    else if (key.equals("item") && v.length >= 5) items.add(v);
+                }
+                if (chat != null && !chat.equals(stateChat)) messages.clear();
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        boolean in(int mx, int my, float x, float y, float w, float h) {
+            return mx >= x && my >= y && mx < x + w && my < y + h;
+        }
+
+        void button(
+                String id,
+                String label,
+                float x,
+                float y,
+                float w,
+                float h,
+                int mx,
+                int my,
+                boolean primary) {
+            boolean hover = in(mx, my, x, y, w, h);
+            rect(
+                    x,
+                    y,
+                    w,
+                    h,
+                    primary ? (hover ? 0xFFFF3A3A : RED) : (hover ? 0xFF3C3C40 : 0xFF2C2C30));
+            text(label, x + (w - width(label)) / 2, y + h / 2 - 7.5f, WHITE);
+            hits.put(id, new float[] {x, y, w, h});
+        }
+
+        void field(String id, String value, String placeholder, float x, float y, float w) {
+            boolean active = id.equals(typing);
+            rect(x, y, w, 18, active ? 0xFF2A1416 : 0xFF121214);
+            outline(x, y, w, 18, active ? RED : 0xFF353539);
+            String shown = value.isEmpty() && !active ? placeholder : value;
+            if (active && System.currentTimeMillis() / 500 % 2 == 0) shown += "_";
+            String visible = shown;
+            while (visible.length() > 1 && width(visible) > w - 10) visible = visible.substring(1);
+            text(visible, x + 5, y + 2, value.isEmpty() && !active ? GRAY : WHITE);
+            hits.put("field:" + id, new float[] {x, y, w, 18});
+        }
+
+        String[] friend(String id) {
+            for (String[] f : friends) if (f[0].equals(id)) return f;
+            return null;
+        }
+
+        @Override
+        public boolean func_73868_f() {
+            return false;
+        }
+
+        @Override
+        public void func_73863_a(int mx, int my, float partial) {
+            try {
+                read();
+                hits.clear();
+                ms = Math.min(1, Math.min((field_146295_m - 8f) / H, (field_146294_l - 8f) / W));
+                begin(ms);
+                int w = (int) (field_146294_l / ms), h = (int) (field_146295_m / ms);
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+                rect(0, 0, w, h, 0x99000000);
+                x0 = (w - W) / 2;
+                y0 = (h - H) / 2;
+                rect(x0 + 4, y0 + 5, W, H, 0x60000000);
+                rect(x0, y0, W, H, 0xFA19191C);
+                outline(x0, y0, W, H, 0xFF353539);
+                image("logo.png", x0 + 12, y0 + 8, 16, 16, 0, 0, 1, 1);
+                text("ANTAGON", x0 + 34, y0 + 8, WHITE);
+                String[] tabs = {"friends", "store"}, labels = {"AMIGOS", "LOJA"};
+                for (int i = 0; i < 2; i++) {
+                    float tx = x0 + 120 + i * 84;
+                    boolean active = tabs[i].equals(tab);
+                    rect(tx, y0 + 6, 78, 20, active ? 0xFF3A1A1C : 0xFF2C2C30);
+                    if (active) rect(tx, y0 + 24, 78, 2, RED);
+                    text(
+                            labels[i],
+                            tx + (78 - width(labels[i])) / 2,
+                            y0 + 8,
+                            active ? WHITE : GRAY);
+                    hits.put("tab:" + tabs[i], new float[] {tx, y0 + 6, 78, 20});
+                }
+                button("close", "X", x0 + W - 28, y0 + 6, 18, 20, mx, my, false);
+                rect(x0 + 10, y0 + 32, W - 20, 1, 0xFF303035);
+                boolean stale = updated == 0 || System.currentTimeMillis() - updated > 6000;
+                if (stale || !online) {
+                    String line =
+                            stale
+                                    ? "ABRA O LAUNCHER DO ANTAGON CLIENT PARA USAR AMIGOS E LOJA."
+                                    : "ENTRE COM SUA CONTA MICROSOFT NO LAUNCHER.";
+                    text(line, x0 + (W - width(line)) / 2, y0 + H / 2 - 8, GRAY);
+                } else if (tab.equals("friends")) drawFriends(mx, my);
+                else drawStore(mx, my);
+                if (!notice.isEmpty()) text(fit(notice, W - 24), x0 + 12, y0 + H - 16, GRAY);
+            } catch (Throwable e) {
+                report(e);
+            } finally {
+                end();
+            }
+        }
+
+        void drawFriends(int mx, int my) throws Exception {
+            float lx = x0 + 10, lw = 170, top = y0 + 40;
+            field("add", addText, "NICK DO AMIGO", lx, top, lw - 26);
+            button("add", "+", lx + lw - 22, top, 22, 18, mx, my, true);
+            List<String[]> rows = new ArrayList<String[]>();
+            if (!incoming.isEmpty()) rows.add(new String[] {"#", "PEDIDOS"});
+            for (String[] p : incoming) rows.add(new String[] {"in", p[0], p[1]});
+            int onlineCount = 0;
+            for (String[] f : friends) if (f[2].equals("1")) onlineCount++;
+            rows.add(new String[] {"#", "AMIGOS - " + onlineCount + " ONLINE"});
+            List<String[]> sorted = new ArrayList<String[]>(friends);
+            Collections.sort(
+                    sorted,
+                    (a, b) ->
+                            a[2].equals(b[2])
+                                    ? a[1].compareToIgnoreCase(b[1])
+                                    : b[2].compareTo(a[2]));
+            for (String[] f : sorted) rows.add(new String[] {"f", f[0]});
+            for (String[] p : outgoing) rows.add(new String[] {"out", p[0], p[1]});
+            float y = top + 26, bottom = y0 + H - 24;
+            int max = Math.max(0, rows.size() - 8);
+            listScroll = Math.max(0, Math.min(listScroll, max));
+            for (int i = listScroll; i < rows.size() && y < bottom - 18; i++) {
+                String[] row = rows.get(i);
+                if (row[0].equals("#")) {
+                    text(row[1], lx, y + 2, GRAY);
+                    y += 18;
+                } else if (row[0].equals("in") || row[0].equals("out")) {
+                    rect(lx, y, lw, 20, 0xFF232327);
+                    text(fit(row[2], lw - 60), lx + 6, y + 2, WHITE);
+                    if (row[0].equals("in")) {
+                        button("accept:" + row[1], "+", lx + lw - 44, y + 2, 20, 16, mx, my, true);
+                        button("remove:" + row[1], "X", lx + lw - 22, y + 2, 20, 16, mx, my, false);
+                    } else
+                        button("remove:" + row[1], "X", lx + lw - 22, y + 2, 20, 16, mx, my, false);
+                    y += 22;
+                } else {
+                    String[] f = friend(row[1]);
+                    boolean on = f[2].equals("1"), selected = f[0].equals(chat);
+                    rect(
+                            lx,
+                            y,
+                            lw,
+                            28,
+                            selected
+                                    ? 0xFF3A1A1C
+                                    : in(mx, my, lx, y, lw, 28) ? 0xFF2C2C30 : 0xFF232327);
+                    rect(lx + 6, y + 6, 4, 4, on ? 0xFF7BD66A : 0xFF55555A);
+                    text(fit(f[1], lw - 20), lx + 14, y + 1, on ? WHITE : GRAY);
+                    text(fit(activity(f), lw - 20), lx + 14, y + 13, GRAY);
+                    hits.put("friend:" + f[0], new float[] {lx, y, lw, 28});
+                    y += 30;
+                }
+            }
+            float cx = x0 + 192, cw = W - 202;
+            rect(cx - 6, top, 1, bottom - top, 0xFF303035);
+            String[] f = chat == null ? null : friend(chat);
+            if (f == null) {
+                String line = "ESCOLHA UM AMIGO PARA CONVERSAR.";
+                text(line, cx + (cw - width(line)) / 2, y0 + H / 2 - 8, GRAY);
+                return;
+            }
+            text(f[1], cx, top + 1, WHITE);
+            text(fit(activity(f), cw - 70), cx, top + 13, GRAY);
+            if (f[3].equals("server") && !f[4].isEmpty())
+                button("join:" + f[4], "ENTRAR", cx + cw - 60, top, 60, 20, mx, my, true);
+            rect(cx, top + 28, cw, 1, 0xFF303035);
+            List<String[]> lines = new ArrayList<String[]>();
+            for (String[] m : messages)
+                for (String part : wrap(m[2], cw - 24)) lines.add(new String[] {m[0], part});
+            float my2 = bottom - 38;
+            for (int i = lines.size() - 1; i >= 0 && my2 > top + 32; i--) {
+                String[] l = lines.get(i);
+                float tw = width(l[1]) + 10, bx = l[0].equals("1") ? cx + cw - tw : cx;
+                rect(bx, my2, tw, 14, l[0].equals("1") ? 0xFFB01212 : 0xFF2C2C30);
+                text(l[1], bx + 5, my2, WHITE);
+                my2 -= 16;
+            }
+            field("chat", chatText, "MENSAGEM", cx, bottom - 18, cw - 64);
+            button("send", "ENVIAR", cx + cw - 60, bottom - 18, 60, 18, mx, my, true);
+        }
+
+        String activity(String[] f) {
+            if (!f[2].equals("1")) return "OFFLINE";
+            if (f[3].equals("server")) return "JOGANDO EM " + f[4].toUpperCase();
+            if (f[3].equals("singleplayer")) return "SINGLEPLAYER";
+            if (f[3].equals("menu")) return "NO MENU";
+            if (f[3].equals("launcher")) return "NO LAUNCHER";
+            return "JOGANDO";
+        }
+
+        List<String> wrap(String text, float max) {
+            List<String> out = new ArrayList<String>();
+            for (String paragraph : text.split("\n")) {
+                String line = "";
+                for (String word : paragraph.split(" ")) {
+                    String next = line.isEmpty() ? word : line + " " + word;
+                    if (width(next) <= max || line.isEmpty()) line = next;
+                    else {
+                        out.add(line);
+                        line = word;
+                    }
+                    while (width(line) > max && line.length() > 1) {
+                        int cut = line.length() - 1;
+                        while (cut > 1 && width(line.substring(0, cut)) > max) cut--;
+                        out.add(line.substring(0, cut));
+                        line = line.substring(cut);
+                    }
+                }
+                out.add(line);
+            }
+            return out;
+        }
+
+        void drawStore(int mx, int my) throws Exception {
+            float top = y0 + 40;
+            image("store.png", x0 + 12, top, 16, 16, 0, 0, 1, 1);
+            text(
+                    (balance < 0 ? "--" : String.valueOf(balance)) + " MOEDAS",
+                    x0 + 32,
+                    top + 1,
+                    WHITE);
+            float cardW = 132, cardH = 150, gap = 10, cx = x0 + 12;
+            for (String[] item : items) {
+                float cy = top + 24;
+                rect(cx, cy, cardW, cardH, 0xFF232327);
+                outline(cx, cy, cardW, cardH, item[4].equals("1") ? RED : 0xFF303035);
+                String texture = item[0].equals("antagon_logo_cape") ? "logo-cape.png" : "cape.png";
+                image(
+                        texture,
+                        cx + (cardW - 40) / 2,
+                        cy + 8,
+                        40,
+                        64,
+                        1 / 64f,
+                        1 / 32f,
+                        11 / 64f,
+                        17 / 32f);
+                text(fit(item[1].toUpperCase(), cardW - 10), cx + 6, cy + 78, WHITE);
+                text(item[2] + " MOEDAS", cx + 6, cy + 92, GRAY);
+                boolean owned = item[3].equals("1"), equipped = item[4].equals("1");
+                String label = equipped ? "TIRAR" : owned ? "EQUIPAR" : "COMPRAR";
+                String action =
+                        equipped ? "equip:none" : owned ? "equip:" + item[0] : "buy:" + item[0];
+                button(action, label, cx + 6, cy + cardH - 26, cardW - 12, 20, mx, my, !equipped);
+                cx += cardW + gap;
+            }
+            String[][] packs = {
+                {"small", "100 MOEDAS", "R$ 4,90"},
+                {"medium", "550 MOEDAS", "R$ 19,90"},
+                {"large", "1.200 MOEDAS", "R$ 39,90"}
+            };
+            float py = top + 24 + cardH + 12;
+            text("COMPRAR MOEDAS (ABRE NO NAVEGADOR)", x0 + 12, py, GRAY);
+            for (int i = 0; i < packs.length; i++)
+                button(
+                        "coins:" + packs[i][0],
+                        packs[i][1] + "  " + packs[i][2],
+                        x0 + 12 + i * 146,
+                        py + 14,
+                        140,
+                        20,
+                        mx,
+                        my,
+                        false);
+        }
+
+        void submit() {
+            if ("add".equals(typing) && !addText.trim().isEmpty()) {
+                command("add", addText.trim());
+                addText = "";
+            } else if ("chat".equals(typing) && chat != null && !chatText.trim().isEmpty()) {
+                command("send", chat, chatText.trim());
+                chatText = "";
+            }
+        }
+
+        @Override
+        protected void func_73869_a(char c, int key) {
+            if (typing != null) {
+                boolean paste =
+                        key == Keyboard.KEY_V
+                                && (Keyboard.isKeyDown(Keyboard.KEY_LMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL));
+                String value = typing.equals("add") ? addText : chatText;
+                int limit = typing.equals("add") ? 16 : 500;
+                if (key == Keyboard.KEY_ESCAPE) typing = null;
+                else if (key == Keyboard.KEY_RETURN) submit();
+                else if (key == Keyboard.KEY_BACK) {
+                    if (!value.isEmpty()) value = value.substring(0, value.length() - 1);
+                } else if (paste) value += Spotify.clipboard().replaceAll("[\\p{Cntrl}]", " ");
+                else if (c >= 32 && c != 127 && c != 167) value += c;
+                if (value.length() > limit) value = value.substring(0, limit);
+                if (typing != null && typing.equals("add"))
+                    addText = value.replaceAll("[^A-Za-z0-9_]", "");
+                else if (typing != null) chatText = value;
+                return;
+            }
+            if (key == Keyboard.KEY_ESCAPE) close();
+        }
+
+        @Override
+        public void func_146274_d() throws IOException {
+            super.func_146274_d();
+            int wheel = Mouse.getEventDWheel();
+            if (wheel != 0) listScroll += wheel > 0 ? -1 : 1;
+        }
+
+        void close() {
+            try {
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        @Override
+        protected void func_73864_a(int mx, int my, int mouseButton) {
+            if (mouseButton != 0) return;
+            mx = (int) (mx / ms);
+            my = (int) (my / ms);
+            String hit = null;
+            for (Map.Entry<String, float[]> e : hits.entrySet()) {
+                float[] b = e.getValue();
+                if (in(mx, my, b[0], b[1], b[2], b[3])) hit = e.getKey();
+            }
+            typing = null;
+            if (hit == null) return;
+            if (hit.equals("close")) close();
+            else if (hit.startsWith("tab:")) {
+                tab = hit.substring(4);
+                if (tab.equals("store")) command("store");
+            } else if (hit.startsWith("field:")) typing = hit.substring(6);
+            else if (hit.equals("add")) {
+                typing = "add";
+                submit();
+                typing = null;
+            } else if (hit.equals("send")) {
+                typing = "chat";
+                submit();
+            } else if (hit.startsWith("friend:")) {
+                chat = hit.substring(7);
+                messages.clear();
+                command("chat", chat);
+                typing = "chat";
+            } else if (hit.startsWith("accept:")) command("accept", hit.substring(7));
+            else if (hit.startsWith("remove:")) command("remove", hit.substring(7));
+            else if (hit.startsWith("buy:")) command("buy", hit.substring(4));
+            else if (hit.startsWith("equip:")) command("equip", hit.substring(6));
+            else if (hit.startsWith("coins:")) command("coins", hit.substring(6));
+            else if (hit.startsWith("join:")) joinServer(hit.substring(5));
+        }
+    }
+
+    @SubscribeEvent
+    public void nametag(RenderPlayerEvent.Post event) {
+        try {
+            Object player = field(event, "entityPlayer");
+            boolean self = player == field(mc, "field_71439_g", "thePlayer");
+            int view =
+                    ((Number)
+                                    field(
+                                            field(mc, "field_71474_y", "gameSettings"),
+                                            "field_74320_O",
+                                            "thirdPersonView"))
+                            .intValue();
+            if (self && (view == 0 || field(mc, "field_71462_r", "currentScreen") != null)) return;
+            if ((Boolean) call(player, new String[] {"func_82150_aj", "isInvisible"})) return;
+            String tag = Cosmetics.tagFor(player);
+            boolean own = self && enabled("ownnametag");
+            if (!own && tag == null) return;
+            double x = event.x, y = event.y, z = event.z, distance = x * x + y * y + z * z;
+            if (distance > 64 * 64) return;
+            double scale = 0.02666667, line = 10 * scale;
+            double base =
+                    y + ((Number) field(player, "field_70131_O", "height")).floatValue() + 0.5;
+            Object board =
+                    call(
+                            field(mc, "field_71441_e", "theWorld"),
+                            new String[] {"func_96441_U", "getScoreboard"});
+            if (distance < 100
+                    && call(board, new String[] {"func_96539_a", "getObjectiveInDisplaySlot"}, 2)
+                            != null) base += 9 * 1.15 * scale;
+            if (own) {
+                Object name = call(player, new String[] {"func_145748_c_", "getDisplayName"});
+                billboard(
+                        x,
+                        base,
+                        z,
+                        (String) call(name, new String[] {"func_150254_d", "getFormattedText"}),
+                        view);
+            }
+            if (tag != null) billboard(x, base + line, z, tag, view);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    /**
+     * Vanilla's nametag drawing, done only through GlStateManager so its state cache stays true.
+     */
+    private void billboard(double x, double y, double z, String text, int view) throws Exception {
+        Object rm = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
+        Object font = field(mc, "field_71466_p", "fontRendererObj");
+        Class<?> gl = Class.forName("net.minecraft.client.renderer.GlStateManager");
+        GL11.glPushMatrix();
+        GL11.glTranslated(x, y, z);
+        GL11.glNormal3f(0, 1, 0);
+        GL11.glRotatef(-getF(rm, "field_78735_i"), 0, 1, 0);
+        GL11.glRotatef((view == 2 ? -1 : 1) * getF(rm, "field_78732_j"), 1, 0, 0);
+        GL11.glScalef(-0.02666667f, -0.02666667f, 0.02666667f);
+        invoke(gl, null, new String[] {"func_179140_f", "disableLighting"});
+        invoke(gl, null, new String[] {"func_179132_a", "depthMask"}, false);
+        invoke(gl, null, new String[] {"func_179097_i", "disableDepth"});
+        invoke(gl, null, new String[] {"func_179147_l", "enableBlend"});
+        invoke(gl, null, new String[] {"func_179120_a", "tryBlendFuncSeparate"}, 770, 771, 1, 0);
+        int half = stringWidth(font, text) / 2;
+        invoke(gl, null, new String[] {"func_179090_x", "disableTexture2D"});
+        invoke(gl, null, new String[] {"func_179131_c", "color"}, 0f, 0f, 0f, 0.25f);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex3f(-half - 1, -1, 0);
+        GL11.glVertex3f(-half - 1, 8, 0);
+        GL11.glVertex3f(half + 1, 8, 0);
+        GL11.glVertex3f(half + 1, -1, 0);
+        GL11.glEnd();
+        invoke(gl, null, new String[] {"func_179098_w", "enableTexture2D"});
+        drawString(font, text, -half, 0, 0x20FFFFFF);
+        invoke(gl, null, new String[] {"func_179126_j", "enableDepth"});
+        invoke(gl, null, new String[] {"func_179132_a", "depthMask"}, true);
+        drawString(font, text, -half, 0, -1);
+        invoke(gl, null, new String[] {"func_179145_e", "enableLighting"});
+        invoke(gl, null, new String[] {"func_179084_k", "disableBlend"});
+        invoke(gl, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+        GL11.glPopMatrix();
+    }
+
+    private void joinServer(String server) {
+        if (!server.matches("[A-Za-z0-9.-]{1,253}(:\\d{1,5})?")) return;
+        try {
+            Object data =
+                    Class.forName("net.minecraft.client.multiplayer.ServerData")
+                            .getConstructor(String.class, String.class, boolean.class)
+                            .newInstance("Antagon", server, false);
+            Object world = field(mc, "field_71441_e", "theWorld");
+            if (world != null) {
+                call(world, new String[] {"func_72882_A", "sendQuittingDisconnectingPacket"});
+                call(mc, new String[] {"func_71403_a", "loadWorld"}, (Object) null);
+            }
+            Object fml =
+                    invoke(
+                            Class.forName("net.minecraftforge.fml.client.FMLClientHandler"),
+                            null,
+                            new String[] {"instance"});
+            Object title = Class.forName("net.minecraft.client.gui.GuiMainMenu").newInstance();
+            call(fml, new String[] {"connectToServer"}, title, data);
+        } catch (Exception e) {
+            report(e);
         }
     }
 }

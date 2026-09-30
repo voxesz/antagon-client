@@ -22,12 +22,15 @@
       <nav>
         <button class="tab active" data-view="play">Jogar</button
         ><button class="tab" data-view="friends">Amigos<span class="badge" id="friends-badge" hidden></span></button
+        ><button class="tab" data-view="store">Loja</button
+        ><button class="tab" data-view="admin" id="admin-tab" hidden>Admin</button
         ><button class="tab" data-view="settings">Configurações</button>
       </nav>
       <button class="update-status" id="update">Verificando atualizações…</button>
       <button class="account" id="profile-open">
         <span class="avatar" id="avatar">P</span
-        ><span><b id="profile-name">Player</b><small id="profile-mode">Offline</small></span>
+        ><span><b id="profile-name">Player</b><small id="profile-mode">Offline</small></span
+        ><span id="profile-admin" class="admin-badge" hidden>ADMIN</span>
       </button>
     </header>
 
@@ -77,6 +80,109 @@
               <button class="primary">Enviar</button>
             </form>
           </div>
+        </div>
+      </section>
+
+      <section id="view-store" class="view">
+        <div class="store">
+          <div class="store-heading">
+            <div>
+              <h1>Cosméticos</h1>
+              <p>Personalize seu jogador. Outros usuários do Antagon veem sua capa e sua tag.</p>
+            </div>
+            <div class="wallet">
+              <img src="../assets/antagon-coin.png" alt="" /><strong id="coin-balance">0</strong><span>moedas</span>
+            </div>
+          </div>
+          <div class="store-gate" id="store-gate">
+            <p>Entre com sua conta Microsoft para usar a loja.</p>
+            <button class="primary" id="store-login">Conectar</button>
+          </div>
+          <div id="store-content" hidden>
+            <h2>Capas</h2>
+            <p id="store-message" class="store-message" hidden></p>
+            <div id="store-items" class="store-items"></div>
+            <h2>Adquirir moedas</h2>
+            <p class="store-note">
+              O pagamento abre no navegador. As moedas aparecem após a confirmação; clique em Atualizar saldo.
+            </p>
+            <div class="coin-packs">
+              <button data-pack="small">
+                <img src="../assets/antagon-coin.png" alt="" /><b>100 moedas</b><span>R$ 4,90</span>
+              </button>
+              <button data-pack="medium">
+                <img src="../assets/antagon-coin.png" alt="" /><b>550 moedas</b><span>R$ 19,90</span>
+              </button>
+              <button data-pack="large">
+                <img src="../assets/antagon-coin.png" alt="" /><b>1.200 moedas</b><span>R$ 39,90</span>
+              </button>
+            </div>
+            <button class="secondary store-refresh" id="store-refresh">Atualizar saldo</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-admin" class="view">
+        <div class="admin-panel">
+          <div class="admin-heading">
+            <span class="admin-badge">ADMIN</span>
+            <h1>Painel administrativo</h1>
+          </div>
+          <p>Busque um usuário registrado pelo nick do Minecraft para gerenciar acesso, moedas e cosméticos.</p>
+          <form id="admin-search" class="admin-search">
+            <input
+              id="admin-name"
+              maxlength="32"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Nick ou UUID do jogador"
+            />
+            <button class="primary">Buscar usuário</button>
+          </form>
+          <div id="admin-result" hidden>
+            <div class="admin-person">
+              <img id="admin-head" class="head" alt="" />
+              <div>
+                <h2 id="admin-target-name"></h2>
+                <small id="admin-target-id"></small>
+              </div>
+              <span id="admin-target-role" class="admin-badge" hidden>ADMIN</span>
+            </div>
+            <div class="admin-grid">
+              <div class="admin-card">
+                <h3>Moedas</h3>
+                <p>Defina o saldo total do jogador.</p>
+                <div class="admin-control">
+                  <input id="admin-coins" type="number" min="0" max="10000000" step="1" /><button
+                    class="primary"
+                    data-admin-action="coins"
+                  >
+                    Salvar saldo
+                  </button>
+                </div>
+              </div>
+              <div class="admin-card">
+                <h3>Capas</h3>
+                <div id="admin-items" class="admin-items"></div>
+              </div>
+              <div class="admin-card" id="admin-role-card">
+                <h3>Cargo</h3>
+                <p>Somente o proprietário pode conceder ou remover administradores.</p>
+                <div class="admin-control">
+                  <button class="secondary" id="admin-role-button" data-admin-action="role">Tornar admin</button>
+                </div>
+              </div>
+              <div class="admin-card">
+                <h3>Acesso ao client</h3>
+                <p id="admin-ban-status">Conta ativa</p>
+                <input id="admin-ban-reason" maxlength="240" placeholder="Motivo do banimento" />
+                <div class="admin-control">
+                  <button class="danger" id="admin-ban-button" data-admin-action="ban">Banir usuário</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p id="admin-empty" class="admin-empty">Busque um jogador para começar.</p>
         </div>
       </section>
 

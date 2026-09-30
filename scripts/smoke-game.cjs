@@ -11,6 +11,10 @@ const installed = path.join(
   'Antagon Client',
 );
 const screenshots = [
+  'antagon-title-buttons.png',
+  'antagon-pause-buttons.png',
+  'antagon-cape-test.png',
+  'antagon-cape-late.png',
   'antagon-smoke.png',
   'antagon-menu.png',
   'antagon-menu-bottom.png',
@@ -19,6 +23,10 @@ const screenshots = [
   'antagon-edit.png',
   'antagon-scoreboard-clean.png',
   'antagon-fullbright.png',
+  'antagon-logo-cape.png',
+  'antagon-hub-friends.png',
+  'antagon-hub-store.png',
+  'antagon-item-physics.png',
 ];
 
 async function main() {
@@ -31,14 +39,27 @@ async function main() {
   }
   await fs.rm(path.join(root, 'minecraft/saves/Antagon-Smoke'), { recursive: true, force: true });
   await fs.rm(path.join(root, 'minecraft/screenshots'), { recursive: true, force: true });
+  const withOptifine = process.env.ANTAGON_TEST_OPTIFINE === '1';
+  if (withOptifine) {
+    const mods = path.join(root, 'minecraft/mods');
+    await fs.mkdir(mods, { recursive: true });
+    const installedMods = path.join(installed, 'minecraft/mods');
+    const optifine = (await fs.readdir(installedMods)).find((file) => /^OptiFine.*\.jar$/i.test(file));
+    if (!optifine) throw Error('OptiFine não está instalado no perfil principal.');
+    await fs.copyFile(path.join(installedMods, optifine), path.join(mods, optifine));
+  }
   const runtime = new Runtime(root, path.join(project, 'assets'), (state) => {
     if (['running', 'launching', 'error', 'idle'].includes(state.phase)) console.log(state);
   });
   const size = process.env.ANTAGON_SMOKE_SMALL ? { width: 854, height: 480 } : {};
-  await runtime.launch({ ...DEFAULTS, discordPresence: false }, offlineAccount('AntagonTest'), {
+  const account = offlineAccount(process.env.ANTAGON_TEST_PLAYER || 'AntagonTest');
+  await runtime.launch({ ...DEFAULTS, discordPresence: false }, account, {
     smoke: true,
+    admin: process.env.ANTAGON_TEST_ADMIN === '1',
     ...size,
   });
+  if (withOptifine)
+    await fs.writeFile(path.join(root, 'minecraft/antagon-cosmetics.properties'), `${account.id}=antagon_cape\n`);
   const child = runtime.child;
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -62,6 +83,14 @@ async function main() {
       /\[ANTAGON TEST\] (?:java\.|.*Exception)/.test(logfile)
     )
       throw Error('O teste do jogo não terminou sem erros.');
+    if (withOptifine && !logfile.includes('[ANTAGON] OptiFine cape bridge active'))
+      throw Error('A capa Antagon não substituiu a textura da OptiFine.');
+    if (withOptifine && !logfile.includes('[ANTAGON] Player render cape bridge active'))
+      throw Error('A capa Antagon não foi aplicada na renderização do jogador.');
+    if (!logfile.includes('[ANTAGON] Menu icons rendered'))
+      throw Error('Os ícones Antagon não apareceram nos botões do jogo.');
+    if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
+      throw Error('O botão da loja não abriu a loja dentro do jogo.');
     for (const name of screenshots) {
       if (!logfile.includes('[ANTAGON TEST] Screenshot saved ' + name)) throw Error('Etapa não executada: ' + name);
       if ((await fs.stat(path.join(root, 'minecraft/screenshots', name))).size < 10000)

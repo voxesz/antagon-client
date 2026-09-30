@@ -22,6 +22,19 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.waitForFunction(() => document.querySelector('#version').textContent.length > 0);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => document.querySelector('#map').dataset.animating === 'true');
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'friends'),
+    );
+    await page.waitForFunction(() => document.querySelector('#view-friends').classList.contains('active'));
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'settings'),
+    );
+    await page.waitForFunction(() => document.querySelector('#view-settings').classList.contains('active'));
+    await page.click('[data-view="store"]');
+    assert.equal(await page.locator('#store-gate').isVisible(), true);
+    assert.equal(await page.locator('#store-content').isVisible(), false);
+    assert.equal(await page.locator('.wallet img').evaluate((img) => img.complete && img.naturalWidth > 0), true);
+    await page.click('[data-view="play"]');
     await page.screenshot({ path: path.join(root, 'docs/launcher.png') });
     await page.click('#background-switch');
     await page.waitForFunction(
@@ -78,8 +91,53 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(state.settings.nickname, 'Antagon_Test');
     assert.equal(state.settings.memory, 5);
     assert.equal(state.settings.pack, false);
+    await app.evaluate(({ ipcMain }) => {
+      for (const channel of ['community:state', 'admin:access', 'admin:find', 'store:state'])
+        ipcMain.removeHandler(channel);
+      const me = {
+        id: '670ffb62-9dfc-4276-8a22-8f51b90691bb',
+        name: 'Voxesz',
+        mcUuid: '670ffb629dfc42768a228f51b90691bb',
+      };
+      ipcMain.handle('community:state', () => ({ ok: true, value: { me, friends: [], incoming: [], outgoing: [] } }));
+      ipcMain.handle('admin:access', () => ({ ok: true, value: { isAdmin: true, isOwner: true, isBanned: false } }));
+      ipcMain.handle('admin:find', () => ({
+        ok: true,
+        value: {
+          user_id: me.id,
+          name: me.name,
+          mc_uuid: me.mcUuid,
+          is_admin: true,
+          is_owner: true,
+          is_banned: false,
+          ban_reason: null,
+          coins: 0,
+          items: [],
+        },
+      }));
+      ipcMain.handle('store:state', () => ({ ok: false, error: 'Catálogo não publicado.' }));
+    });
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector('#admin-tab').hidden);
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'admin'),
+    );
+    await page.waitForFunction(() => document.querySelector('#view-admin').classList.contains('active'));
+    await page.click('[data-view="store"]');
+    await page.waitForFunction(() => document.querySelector('#store-items .store-item'));
+    assert.match(await page.locator('#store-items').textContent(), /Capa Antagon/);
+    assert.match(await page.locator('#store-items').textContent(), /Capa Logo Antagon/);
+    assert.equal(await page.locator('#store-items button:not([disabled])').count(), 0);
+    await page.screenshot({ path: path.join(root, 'build/store-preview.png') });
+    await page.click('[data-view="admin"]');
+    await page.fill('#admin-name', 'Voxesz');
+    await page.click('#admin-search button');
+    assert.equal(await page.locator('#admin-target-name').textContent(), 'Voxesz');
+    await page.screenshot({ path: path.join(root, 'build/admin-preview.png') });
     assert.equal(errors.length, 0, errors.join('\n'));
-    console.log('UI OK: navegação, animações suspensas, movimento reduzido, configurações rápidas, perfil e Discord.');
+    console.log(
+      'UI OK: loja, admin, navegação, animações suspensas, movimento reduzido, configurações rápidas, perfil e Discord.',
+    );
   } finally {
     await app.close();
     await fs.rm(profile, { recursive: true, force: true });

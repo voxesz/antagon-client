@@ -12,8 +12,14 @@ public class AntagonTransformer implements IClassTransformer {
         if (bytes == null) return bytes;
         if ("net.minecraft.client.renderer.entity.RendererLivingEntity".equals(transformedName))
             return patch(bytes, "func_177092_a", AntagonTransformer::hitColor, "Hit Color");
+        if ("net.minecraft.client.renderer.entity.RenderEntityItem".equals(transformedName))
+            return patch(bytes, "func_177077_a", AntagonTransformer::itemPhysics, "Item physics");
+        if ("net.minecraft.client.gui.GuiPlayerTabOverlay".equals(transformedName))
+            return patch(bytes, "func_175245_a", AntagonTransformer::tabIcon, "Tab icon");
         if ("net.minecraft.client.gui.GuiIngame".equals(transformedName))
             return patch(bytes, "func_180475_a", AntagonTransformer::scoreboard, "Scoreboard");
+        if ("net.minecraft.client.entity.AbstractClientPlayer".equals(transformedName))
+            return patch(bytes, "func_110303_q", AntagonTransformer::cape, "Cape");
         return bytes;
     }
 
@@ -74,6 +80,56 @@ public class AntagonTransformer implements IClassTransformer {
         return false;
     }
 
+    private static boolean itemPhysics(MethodNode m) {
+        LabelNode vanilla = new LabelNode();
+        InsnList head = new InsnList();
+        head.add(new FieldInsnNode(Opcodes.GETSTATIC, "studio/antagon/Hooks", "itemPhysics", "Z"));
+        head.add(new JumpInsnNode(Opcodes.IFEQ, vanilla));
+        head.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        head.add(new VarInsnNode(Opcodes.DLOAD, 2));
+        head.add(new VarInsnNode(Opcodes.DLOAD, 4));
+        head.add(new VarInsnNode(Opcodes.DLOAD, 6));
+        head.add(new VarInsnNode(Opcodes.FLOAD, 8));
+        head.add(new VarInsnNode(Opcodes.ALOAD, 9));
+        head.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        head.add(
+                new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        "studio/antagon/Hooks",
+                        "itemTransform",
+                        "(Ljava/lang/Object;DDDFLjava/lang/Object;Ljava/lang/Object;)I",
+                        false));
+        head.add(new InsnNode(Opcodes.IRETURN));
+        head.add(vanilla);
+        head.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+        m.instructions.insert(head);
+        return true;
+    }
+
+    private static boolean tabIcon(MethodNode m) {
+        boolean patched = false;
+        for (AbstractInsnNode insn = m.instructions.getFirst();
+                insn != null;
+                insn = insn.getNext()) {
+            if (insn.getOpcode() != Opcodes.RETURN) continue;
+            InsnList call = new InsnList();
+            call.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            call.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            call.add(new VarInsnNode(Opcodes.ILOAD, 3));
+            call.add(new VarInsnNode(Opcodes.ALOAD, 4));
+            call.add(
+                    new MethodInsnNode(
+                            Opcodes.INVOKESTATIC,
+                            "studio/antagon/Hooks",
+                            "tabIcon",
+                            "(IIILjava/lang/Object;)V",
+                            false));
+            m.instructions.insertBefore(insn, call);
+            patched = true;
+        }
+        return patched;
+    }
+
     private static boolean scoreboard(MethodNode m) {
         LabelNode vanilla = new LabelNode();
         InsnList head = new InsnList();
@@ -86,5 +142,27 @@ public class AntagonTransformer implements IClassTransformer {
         head.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
         m.instructions.insert(head);
         return true;
+    }
+
+    private static boolean cape(MethodNode m) {
+        boolean changed = false;
+        for (AbstractInsnNode insn = m.instructions.getFirst();
+                insn != null;
+                insn = insn.getNext()) {
+            if (insn.getOpcode() != Opcodes.ARETURN) continue;
+            InsnList hook = new InsnList();
+            hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            hook.add(
+                    new MethodInsnNode(
+                            Opcodes.INVOKESTATIC,
+                            "studio/antagon/Hooks",
+                            "cape",
+                            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                            false));
+            hook.add(new TypeInsnNode(Opcodes.CHECKCAST, "net/minecraft/util/ResourceLocation"));
+            m.instructions.insertBefore(insn, hook);
+            changed = true;
+        }
+        return changed;
     }
 }

@@ -176,3 +176,9 @@ enabled = true
 
 [functions.minecraft-auth]
 verify_jwt = false
+
+[functions.coin-checkout]
+verify_jwt = true
+
+[functions.coin-webhook]
+verify_jwt = false

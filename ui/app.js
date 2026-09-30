@@ -6,6 +6,8 @@ const $ = (s) => document.querySelector(s),
 const api = window.antagon;
 document.body.classList.add(api.platform);
 let settings, settingsStore, account, toastTimer;
+let adminAccess = { isAdmin: false, isOwner: false, isBanned: false },
+  adminTarget = null;
 function toast(message) {
   $('#toast').textContent = message;
   $('#toast').classList.add('show');
@@ -54,13 +56,21 @@ $$('[data-view]').forEach(
         renderCommunity();
         renderMessages();
       }
+      if (tab.dataset.view === 'store') refreshStore();
+      if (tab.dataset.view === 'admin') refreshAdminAccess();
     }),
 );
+api.onOpenView((view) => {
+  if (!['settings', 'friends', 'store', 'admin'].includes(view)) return;
+  const tab = $(`[data-view="${view}"]`);
+  if (tab && !tab.hidden) tab.click();
+});
 function renderProfile() {
   const microsoft = settings.mode === 'microsoft' && account,
     name = microsoft ? account.name : settings.nickname;
   $('#profile-name').textContent = name;
   $('#profile-mode').textContent = microsoft ? 'Microsoft' : 'Offline';
+  $('#profile-admin').hidden = !adminAccess.isAdmin;
   $('#avatar').textContent = name[0].toUpperCase();
   $('#nickname').value = settings.nickname;
   $('#connected-account').textContent = account ? account.name : '';
@@ -244,6 +254,175 @@ action('#open-logs', async () => {
   $('#logs-dialog').showModal();
 });
 const community = api.community;
+let storeState = null;
+async function refreshStore() {
+  const connected = !!people.me;
+  $('#store-gate').hidden = connected;
+  $('#store-content').hidden = !connected;
+  if (!connected) return;
+  try {
+    storeState = await api.store.state();
+    renderStore();
+  } catch (error) {
+    storeState = null;
+    renderStore();
+  }
+}
+const CAPES = {
+  antagon_cape: {
+    name: 'Capa Antagon',
+    image: '../assets/antagon-cape.png',
+    description: 'Capa preta com a logo Antagon em vermelho.',
+  },
+  antagon_logo_cape: {
+    name: 'Capa Logo Antagon',
+    image: '../assets/antagon-logo-cape.png',
+    description: 'Capa vermelha com a logo Antagon em alta resolução.',
+  },
+};
+function renderStore() {
+  const available = !!storeState?.catalog?.length;
+  const catalog = available
+    ? storeState.catalog
+    : Object.entries(CAPES).map(([id, cape]) => ({ id, name: cape.name, kind: 'cape', price: 100 }));
+  $('#coin-balance').textContent = (storeState?.balance || 0).toLocaleString('pt-BR');
+  $('#store-message').hidden = available;
+  $('#store-message').textContent = available ? '' : 'Prévia do item. O catálogo ainda não está ativo neste servidor.';
+  $$('.coin-packs button').forEach((button) => (button.disabled = !available));
+  $('#store-items').innerHTML = catalog
+    .map((item) => {
+      const owned = storeState?.owned?.includes(item.id);
+      const equipped = storeState?.equipped?.[item.kind] === item.id;
+      const cape = CAPES[item.id] || CAPES.antagon_cape;
+      return `<article class="store-item"><div class="cape-preview"><img src="${cape.image}" alt="${escape(cape.description)}" /></div><div><h3>${escape(item.name)}</h3><p>${escape(cape.description)}</p><span class="item-price"><img src="../assets/antagon-coin.png" alt="" />${item.price} moedas</span></div><button class="primary" data-store-item="${escape(item.id)}" data-store-action="${owned ? (equipped ? 'unequip' : 'equip') : 'purchase'}" ${available ? '' : 'disabled'}>${available ? (owned ? (equipped ? 'Desequipar' : 'Equipar') : 'Comprar') : 'Em breve'}</button></article>`;
+    })
+    .join('');
+}
+
+async function refreshAdminAccess() {
+  if (!people.me) {
+    adminAccess = { isAdmin: false, isOwner: false, isBanned: false };
+  } else {
+    try {
+      adminAccess = await api.admin.access();
+    } catch {
+      adminAccess = { isAdmin: false, isOwner: false, isBanned: false };
+    }
+  }
+  $('#admin-tab').hidden = !adminAccess.isAdmin;
+  $('#profile-admin').hidden = !adminAccess.isAdmin;
+  if (!adminAccess.isAdmin) {
+    adminTarget = null;
+    $('#admin-result').hidden = true;
+    if ($('#view-admin').classList.contains('active')) $('[data-view="play"]').click();
+  }
+  return adminAccess;
+}
+
+function renderAdminTarget() {
+  const user = adminTarget;
+  $('#admin-result').hidden = !user;
+  $('#admin-empty').hidden = !!user;
+  if (!user) return;
+  $('#admin-target-name').textContent = user.name;
+  $('#admin-target-id').textContent = user.mc_uuid;
+  $('#admin-head').src = `https://mc-heads.net/avatar/${user.mc_uuid}/48`;
+  $('#admin-target-role').hidden = !user.is_admin;
+  $('#admin-coins').value = user.coins;
+  $('#admin-items').innerHTML = Object.entries(CAPES)
+    .map(([id, cape]) => {
+      const owned = user.items.includes(id);
+      return `<div class="admin-item"><span>${escape(cape.name)}<small>${owned ? 'No inventário' : 'Não adquirida'}</small></span><button class="${owned ? 'secondary' : 'primary'}" data-admin-action="item" data-item="${id}">${owned ? 'Remover' : 'Dar capa'}</button></div>`;
+    })
+    .join('');
+  $('#admin-role-card').hidden = !adminAccess.isOwner || user.user_id === people.me?.id || user.is_owner;
+  $('#admin-role-button').textContent = user.is_admin ? 'Remover admin' : 'Tornar admin';
+  $('#admin-ban-status').textContent = user.is_banned ? `Banido: ${user.ban_reason}` : 'Conta ativa';
+  $('#admin-ban-button').textContent = user.is_banned ? 'Desbanir usuário' : 'Banir usuário';
+  $('#admin-ban-button').disabled = user.is_admin || user.user_id === people.me?.id;
+  $('#admin-ban-reason').hidden = user.is_banned;
+  $('#admin-ban-reason').value = '';
+}
+
+$('#admin-search').onsubmit = async (event) => {
+  event.preventDefault();
+  try {
+    adminTarget = await api.admin.find($('#admin-name').value.trim());
+    renderAdminTarget();
+  } catch (error) {
+    adminTarget = null;
+    renderAdminTarget();
+    toast(error.message);
+  }
+};
+$('#admin-result').onclick = async (event) => {
+  const button = event.target.closest('[data-admin-action]');
+  if (!button || button.disabled || !adminTarget) return;
+  const action = button.dataset.adminAction;
+  let value;
+  if (action === 'coins') {
+    value = Number($('#admin-coins').value);
+    if (!Number.isInteger(value) || value < 0 || value > 10000000)
+      return toast('Digite um saldo entre 0 e 10.000.000.');
+  } else if (action === 'item') {
+    value = { item: button.dataset.item, grant: !adminTarget.items.includes(button.dataset.item) };
+  } else if (action === 'role') {
+    value = !adminTarget.is_admin;
+  } else if (action === 'ban') {
+    value = { banned: !adminTarget.is_banned, reason: $('#admin-ban-reason').value.trim() };
+    if (value.banned && !value.reason) return toast('Informe o motivo do banimento.');
+    if (value.banned && !confirm(`Banir ${adminTarget.name} do Antagon Client?`)) return;
+  }
+  button.disabled = true;
+  try {
+    await api.admin.change(action, adminTarget.user_id, value);
+    adminTarget = await api.admin.find(adminTarget.name);
+    renderAdminTarget();
+    toast('Alteração salva.');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#store-login').onclick = async () => {
+  if (settings?.mode !== 'microsoft' || !account) return $('#profile-open').click();
+  try {
+    await community.login();
+    await refreshCommunity();
+    await refreshStore();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+action('#store-refresh', refreshStore);
+$('#store-items').onclick = async (event) => {
+  const button = event.target.closest('[data-store-item]');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    storeState =
+      button.dataset.storeAction === 'purchase'
+        ? await api.store.purchase(button.dataset.storeItem)
+        : await api.store.equip(button.dataset.storeAction === 'unequip' ? null : button.dataset.storeItem);
+    renderStore();
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
+};
+$('.coin-packs').onclick = async (event) => {
+  const button = event.target.closest('[data-pack]');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    await api.store.checkout(button.dataset.pack);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+};
 const ACTIVITY = {
   launcher: () => 'No launcher',
   menu: () => 'No menu do jogo',
@@ -346,6 +525,8 @@ function resetCommunity() {
   unread.clear();
   conversation.clear();
   renderCommunity();
+  refreshAdminAccess();
+  refreshStore();
 }
 
 function refreshCommunity() {
@@ -366,6 +547,8 @@ function refreshCommunity() {
       people = next;
       loaded = true;
       renderCommunity();
+      refreshAdminAccess();
+      if ($('#view-store').classList.contains('active')) refreshStore();
     } catch (error) {
       if (revision === communityRevision) toast(error.message);
     } finally {

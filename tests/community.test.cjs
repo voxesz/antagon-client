@@ -35,6 +35,23 @@ test('friend identifiers cannot inject query filters', () => {
   for (const id of ['', 'me),or(id.eq.other', '../../path']) assert.throws(() => validateId(id));
 });
 
+test('admin actions reject malformed targets and unknown commands before RPC', async () => {
+  let calls = 0;
+  const context = {
+    db: {
+      rpc: async () => {
+        calls++;
+        return { error: null };
+      },
+    },
+  };
+  await assert.rejects(Community.prototype.adminChange.call(context, 'coins', 'not-a-uuid', 100));
+  await assert.rejects(
+    Community.prototype.adminChange.call(context, 'unknown', '670ffb62-9dfc-4276-8a22-8f51b90691bb', 100),
+  );
+  assert.equal(calls, 0);
+});
+
 test('community sign out clears only the local session after a presence failure', async () => {
   let stopped = false,
     scope;

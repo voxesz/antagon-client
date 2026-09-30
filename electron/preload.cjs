@@ -32,6 +32,17 @@ contextBridge.exposeInMainWorld('antagon', {
       return () => ipcRenderer.removeListener('community:event', listener);
     },
   },
+  store: {
+    state: () => call('store:state'),
+    purchase: (item) => call('store:purchase', item),
+    equip: (item) => call('store:equip', item),
+    checkout: (pack) => call('store:checkout', pack),
+  },
+  admin: {
+    access: () => call('admin:access'),
+    find: (name) => call('admin:find', name),
+    change: (action, id, value) => call('admin:change', action, id, value),
+  },
   init: () => call('app:init'),
   saveSettings: (s) => call('settings:save', s),
   login: () => call('account:login'),
@@ -49,5 +60,10 @@ contextBridge.exposeInMainWorld('antagon', {
     const listener = (_, state) => fn(state);
     ipcRenderer.on('game:state', listener);
     return () => ipcRenderer.removeListener('game:state', listener);
+  },
+  onOpenView: (fn) => {
+    const listener = (_, view) => fn(view);
+    ipcRenderer.on('game:open-view', listener);
+    return () => ipcRenderer.removeListener('game:open-view', listener);
   },
 });

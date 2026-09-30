@@ -18,6 +18,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 body {
   margin: 0;
   height: 100vh;
@@ -53,8 +56,8 @@ button:disabled {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 32px;
-  padding: 0 20px 0 92px;
+  gap: 16px;
+  padding: 0 14px 0 84px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   -webkit-app-region: drag;
@@ -66,6 +69,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: none;
 }
 .brand img {
   height: 20px;
@@ -75,14 +79,15 @@ button:disabled {
 }
 nav {
   display: flex;
-  gap: 4px;
+  gap: 1px;
   height: 100%;
+  flex: none;
 }
 .tab {
   font-family: var(--pixel);
   font-size: 14px;
   color: var(--muted);
-  padding: 0 14px;
+  padding: 0 10px;
   height: 100%;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -110,13 +115,15 @@ nav {
   margin-left: 12px;
 }
 .account {
-  margin-left: auto;
+  margin-left: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   padding: 6px 10px 6px 6px;
   border-radius: 4px;
   text-align: left;
+  min-width: 0;
+  flex: none;
 }
 .account:hover {
   background: var(--raised);
@@ -134,6 +141,10 @@ nav {
   display: block;
   font-weight: 600;
   font-size: 13px;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .account small {
   color: var(--muted);
@@ -152,6 +163,283 @@ main {
 }
 .view.active {
   display: block;
+}
+
+#view-store {
+  overflow: auto;
+  background: #111;
+}
+.store {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 42px 32px 64px;
+}
+.store-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.store h1 {
+  margin: 0;
+  font: 34px var(--pixel);
+}
+.store h2 {
+  margin: 36px 0 15px;
+  font: 22px var(--pixel);
+}
+.store h3 {
+  margin: 0 0 7px;
+  font: 20px var(--pixel);
+}
+.store p {
+  color: var(--muted);
+}
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  background: var(--raised);
+  border: 1px solid #38302d;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.wallet img {
+  width: 30px;
+  height: 30px;
+  image-rendering: pixelated;
+}
+.wallet strong {
+  font: 24px var(--pixel);
+}
+.wallet span {
+  color: var(--muted);
+}
+.store-gate {
+  margin-top: 36px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.store-items {
+  display: grid;
+  gap: 14px;
+}
+.store-item {
+  display: grid;
+  grid-template-columns: 116px 1fr auto;
+  align-items: center;
+  gap: 22px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.cape-preview {
+  height: 144px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, #3a1b1b, #171414 68%);
+}
+.cape-preview img {
+  width: 80px;
+  height: 128px;
+  object-fit: cover;
+  object-position: left top;
+  image-rendering: pixelated;
+}
+.store-item p {
+  margin: 0 0 14px;
+}
+.item-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff766f;
+  font-weight: 700;
+}
+.item-price img {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+}
+.store-item button {
+  min-width: 110px;
+}
+.store-note {
+  margin-top: -9px;
+}
+.coin-packs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.coin-packs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 18px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.coin-packs button:hover {
+  border-color: var(--red);
+  background: #251717;
+}
+.coin-packs img {
+  width: 50px;
+  height: 50px;
+  image-rendering: pixelated;
+}
+.coin-packs b {
+  font: 18px var(--pixel);
+}
+.coin-packs span {
+  color: var(--muted);
+}
+.store-refresh {
+  margin-top: 16px;
+}
+.store-message {
+  padding: 10px 12px;
+  color: #e9b1aa !important;
+  background: #291717;
+  border: 1px solid #67302e;
+  border-radius: 4px;
+}
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  color: #fff;
+  background: #9c1619;
+  border: 1px solid #ec3637;
+  border-radius: 3px;
+  font: 12px var(--pixel);
+  letter-spacing: 0.06em;
+}
+#profile-admin {
+  margin-left: -4px;
+}
+#view-admin {
+  overflow: auto;
+  background: #111;
+}
+.admin-panel {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 32px 72px;
+}
+.admin-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.admin-heading h1 {
+  margin: 0;
+  font: 32px var(--pixel);
+}
+.admin-panel > p {
+  color: var(--muted);
+}
+.admin-search {
+  display: flex;
+  gap: 10px;
+  margin: 28px 0;
+}
+.admin-search input,
+.admin-card input {
+  min-width: 0;
+  padding: 10px 12px;
+  background: #101010;
+  border: 1px solid #383838;
+  border-radius: 4px;
+  outline: none;
+}
+.admin-search input {
+  flex: 1;
+}
+.admin-search input:focus,
+.admin-card input:focus {
+  border-color: var(--red);
+}
+.admin-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.admin-person .head {
+  width: 48px;
+  height: 48px;
+}
+.admin-person h2 {
+  margin: 0;
+  font: 23px var(--pixel);
+}
+.admin-person small {
+  color: var(--muted);
+}
+.admin-person .admin-badge {
+  margin-left: auto;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.admin-card {
+  min-height: 164px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.admin-card h3 {
+  margin: 0 0 5px;
+  font: 20px var(--pixel);
+}
+.admin-card p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+.admin-card input {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.admin-control {
+  display: flex;
+  gap: 10px;
+}
+.admin-control input {
+  flex: 1;
+  width: 100px;
+  margin: 0;
+}
+.admin-control button {
+  white-space: nowrap;
+}
+.danger {
+  padding: 8px 13px;
+  background: #8e171a;
+  border-radius: 4px;
+  color: white;
+}
+.danger:hover {
+  background: #bc1b20;
+}
+.admin-empty {
+  margin-top: 25px;
+  padding: 25px;
+  border: 1px dashed #444;
+  text-align: center;
 }
 
 #view-play {
@@ -698,7 +986,29 @@ pre {
   color: var(--text);
 }
 .update-status + .account {
-  margin-left: 12px;
+  margin-left: 0;
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    gap: 10px;
+    padding-left: 80px;
+  }
+  .tab {
+    padding: 0 8px;
+    font-size: 13px;
+  }
+  .update-status,
+  .update {
+    max-width: 126px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  #profile-admin {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -709,4 +1019,21 @@ pre {
     animation: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+.admin-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-item small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
 }

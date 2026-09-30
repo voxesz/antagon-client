@@ -382,6 +382,16 @@ class Runtime {
     const logDir = path.join(this.root, 'logs');
     await fsp.mkdir(logDir, { recursive: true });
     await fsp.rm(path.join(this.game, 'antagon-status.txt'), { force: true });
+    await Promise.all([
+      fsp.rm(path.join(this.game, 'antagon-players.txt'), { force: true }),
+      fsp.rm(path.join(this.game, 'antagon-cosmetics.properties'), { force: true }),
+      fsp.rm(path.join(this.game, 'antagon-ui-request.txt'), { force: true }),
+    ]);
+    await fsp.writeFile(
+      path.join(this.game, 'antagon-session.properties'),
+      'admin=' + (testOptions.admin === true ? 'true' : 'false') + '\n',
+      { mode: 0o600 },
+    );
     const file = await fsp.open(path.join(logDir, 'game.log'), 'w', 0o600);
     const log = file.createWriteStream();
     const child = spawn(installation.java, args, {

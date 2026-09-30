@@ -21,6 +21,15 @@ Deno.serve(async (req) => {
   if (!/^[0-9a-f]{32}$/.test(profile.id) || !/^[A-Za-z0-9_]{1,16}$/.test(profile.name))
     return reply({ error: 'Perfil do Minecraft inválido.' }, 401);
 
+  const existing = await admin.from('profiles').select('id').eq('mc_uuid', profile.id).maybeSingle();
+  if (existing.error) return reply({ error: 'Não foi possível verificar a conta.' }, 503);
+  if (existing.data) {
+    const ban = await admin.from('banned_users').select('reason').eq('user_id', existing.data.id).maybeSingle();
+    if (!ban.error && ban.data) return reply({ error: `Conta banida do Antagon Client: ${ban.data.reason}` }, 403);
+    if (ban.error && ban.error.code !== '42P01' && ban.error.code !== 'PGRST205')
+      return reply({ error: 'Não foi possível verificar a conta.' }, 503);
+  }
+
   const email = `${profile.id}@players.antagon.invalid`;
   const created = await admin.auth.admin.createUser({ email, email_confirm: true });
   if (created.error && created.error.code !== 'email_exists') return reply({ error: 'Falha ao criar a conta.' }, 500);

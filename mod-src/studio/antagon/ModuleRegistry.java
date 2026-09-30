@@ -28,7 +28,9 @@ final class ModuleRegistry {
         "autotext",
         "scoreboard",
         "hitdelay",
-        "fullbright"
+        "fullbright",
+        "ownnametag",
+        "itemphysics"
     };
     static final String[] NAMES = {
         "FPS",
@@ -51,11 +53,13 @@ final class ModuleRegistry {
         "AUTO TEXT",
         "SCOREBOARD",
         "HIT DELAY FIX",
-        "FULL BRIGHT"
+        "FULL BRIGHT",
+        "NAMETAG PRÓPRIO",
+        "ITEM PHYSICS"
     };
     static final boolean[] DEFAULT_ON = {
         true, true, true, false, true, false, false, false, false, false, false, false, false,
-        false, false, false, false, false, false, false, false
+        false, false, false, false, false, false, false, false, true, false
     };
     static final int AUTOTEXT_SLOTS = 6;
     static final String COLOR_VALUES = "branco,vermelho,amarelo,verde,ciano";
@@ -71,10 +75,11 @@ final class ModuleRegistry {
         "Formato, cor e tamanho", "Horário e repetidas", "Esconde títulos",
         "Spotify no jogo", "Distância do último hit", "Hits seguidos",
         "Limites visuais das entidades", "Cor do efeito de dano", "Atalhos de mensagens",
-        "Tamanho, fundo e números", "Remove o bloqueio de clique", "Brilho máximo"
+        "Tamanho, fundo e números", "Remove o bloqueio de clique", "Brilho máximo",
+        "Seu nome em terceira pessoa", "Itens deitados no chão"
     };
     private static final int[] CATEGORY = {
-        1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3
+        1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 3, 3
     };
 
     static int[] filter(int category) {
@@ -189,6 +194,7 @@ final class ModuleRegistry {
                 {"hide", "ESCONDER SCOREBOARD", "off,on"}
             };
         if (mod.equals("hitdelay")) return new String[0][];
+        if (mod.equals("ownnametag") || mod.equals("itemphysics")) return new String[0][];
         if (mod.equals("fullbright"))
             return new String[][] {{"shadows", "SEM SOMBRA DAS ENTIDADES", "on,off"}};
         if (mod.equals("notitles"))

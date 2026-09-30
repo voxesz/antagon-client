@@ -40,8 +40,11 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Atualização automática pelas Releases do GitHub
 - Discord Rich Presence integrado, com controle de privacidade do servidor
 - Fundos animados suspensos fora da tela inicial e durante o jogo
+- Loja de cosméticos: Moedas Antagon, capa preta com a logo vermelha e inventário associado à conta Microsoft
+- Tag Antagon no chat e no tab, e capas visíveis para outros jogadores com o client e sessão de comunidade ativa
 
-**Mods** (todos configuráveis pelo Shift direito)
+**Mods** (configuráveis pelo Shift direito). O botão Antagon no menu inicial abre as configurações do launcher. No Esc,
+os atalhos acima de **Abrir para LAN** abrem Configurações, Amigos e Loja; administradores também veem Admin.
 
 O menu usa categorias, rolagem suave e altura ajustada à janela. Cabeçalho e rodapé ficam fixos; use a roda do mouse,
 as setas ou Page Up/Page Down para explorar a lista. As opções e o editor de HUD continuam acessíveis em qualquer tamanho de interface.
@@ -99,6 +102,31 @@ Amigos, status e chat usam o [Supabase](https://supabase.com) (`supabase/`). O l
 da Mojang (`supabase/functions/minecraft-auth`) antes de criar a sessão; as regras de acesso ficam no próprio banco
 (`supabase/migrations`): só amigos veem o seu status, só dá para mandar mensagem para amigos e ninguém cria amizade em
 nome de outro. A chave em `electron/community.cjs` é a chave pública do projeto.
+
+## Loja e pagamentos
+
+A migração `supabase/migrations/20260930000000_cosmetics.sql` cria catálogo, carteira, inventário, equipamento e
+as operações atômicas de compra. O cliente nunca grava saldo diretamente. O launcher envia ao banco apenas os UUIDs
+da lista de jogadores; o jogo recebe um arquivo local com tags e capas, sem receber tokens da conta. A capa Antagon
+equipada também assume a textura de capa do OptiFine durante a partida.
+
+Para ativar pagamentos, aplique as migrações no projeto Supabase e publique as funções `coin-checkout` e `coin-webhook`.
+Configure os segredos `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` e `CHECKOUT_RETURN_URL` (uma URL HTTPS de retorno após
+o Checkout). Registre na Stripe um endpoint para `https://<project-ref>.supabase.co/functions/v1/coin-webhook` com os
+eventos `checkout.session.completed` e `checkout.session.async_payment_succeeded`. A função do webhook tem
+`verify_jwt = false` porque a Stripe não envia JWT do Supabase; ela valida a assinatura do corpo recebido. Os pacotes
+custam R$ 4,90 (100 moedas), R$ 19,90 (550) e R$ 39,90 (1.200). A capa de teste custa 100 moedas.
+
+O pagamento é concluído no navegador. Use **Atualizar saldo** na loja depois de voltar. A tag no chat é adicionada a
+mensagens nos formatos `<Nick>` e `Nick:` (com prefixo opcional `[Rank]`); servidores com outros formatos podem não exibi-la. O tab usa a tag para
+qualquer jogador autenticado com o client ativo. Contas offline não participam da loja nem publicam cosméticos.
+
+A migração `20260930010000_admin.sql` concede o cargo de proprietário ao UUID verificado da conta **Voxesz** e cria o
+painel **Admin**. O proprietário pode nomear ou remover outros administradores. Administradores podem buscar jogadores
+registrados pelo nick, banir ou desbanir contas, definir o saldo de moedas e conceder ou remover cosméticos. Todas as
+mudanças ficam registradas em `admin_audit`; as permissões são verificadas no banco. O banimento bloqueia login,
+comunidade, loja e jogo com a conta Microsoft no launcher distribuído. O modo offline e cópias modificadas do client
+não podem ser bloqueados com segurança sem um servidor de jogo ou serviço de autorização obrigatório.
 
 ## Estrutura
 

@@ -116,9 +116,105 @@ class Community {
 
   async publish() {
     if (!this.me) return;
-    await this.db
-      .from('presence')
-      .upsert({ user_id: this.me.id, ...this.activity, updated_at: new Date().toISOString() });
+    await Promise.all([
+      this.db.from('presence').upsert({ user_id: this.me.id, ...this.activity, updated_at: new Date().toISOString() }),
+      this.db.rpc(this.activity.activity === 'offline' ? 'leave_client' : 'heartbeat_client'),
+    ]);
+  }
+
+  async access() {
+    if (!this.me) return { isAdmin: false, isOwner: false, isBanned: false, banReason: null };
+    const { data, error } = await this.db.rpc('account_status').single();
+    if (error?.code === 'PGRST202' || error?.code === 'PGRST205') {
+      const catalog = await this.db.from('cosmetic_catalog').select('id').limit(1);
+      if (catalog.error?.code === 'PGRST205' || catalog.error?.code === '42P01')
+        return { isAdmin: false, isOwner: false, isBanned: false, banReason: null };
+    }
+    if (error) throw Error('Não foi possível verificar o acesso à conta.');
+    return {
+      isAdmin: !!data.is_admin,
+      isOwner: !!data.is_owner,
+      isBanned: !!data.is_banned,
+      banReason: data.ban_reason || null,
+    };
+  }
+
+  async requireActive() {
+    const access = await this.access();
+    if (access.isBanned) throw Error(`Conta banida do Antagon Client: ${access.banReason || 'sem motivo informado'}`);
+    return access;
+  }
+
+  async adminFind(name) {
+    if (!/^(?:[A-Za-z0-9_]{1,16}|[0-9a-fA-F]{32})$/.test(name || '')) throw Error('Digite um nick ou UUID válido.');
+    const { data, error } = await this.db.rpc('admin_find_user', { p_name: name });
+    if (error) throw Error(error.message || 'Não foi possível buscar o jogador.');
+    if (!data?.length) throw Error('Jogador ainda não registrado no Antagon Client.');
+    return data[0];
+  }
+
+  async adminChange(action, id, value) {
+    validateId(id);
+    const commands = {
+      role: ['admin_set_role', { p_target: id, p_admin: value === true }],
+      ban: ['admin_set_ban', { p_target: id, p_banned: value?.banned === true, p_reason: value?.reason || null }],
+      coins: ['admin_set_coins', { p_target: id, p_balance: value }],
+      item: ['admin_set_item', { p_target: id, p_item: value?.item, p_grant: value?.grant === true }],
+    };
+    if (!Object.hasOwn(commands, action)) throw Error('Ação inválida.');
+    const [rpc, args] = commands[action];
+    const { error } = await this.db.rpc(rpc, args);
+    if (error) throw Error(error.message || 'Não foi possível salvar a alteração.');
+    return true;
+  }
+
+  async store() {
+    if (!this.me) throw Error('Entre na comunidade primeiro.');
+    await this.requireActive();
+    const [catalog, wallet, owned, equipped] = await Promise.all([
+      this.db.from('cosmetic_catalog').select('id, name, kind, price').order('price'),
+      this.db.from('coin_wallets').select('balance').eq('user_id', this.me.id).maybeSingle(),
+      this.db.from('owned_cosmetics').select('item_id').eq('user_id', this.me.id),
+      this.db.from('equipped_cosmetics').select('kind, item_id').eq('user_id', this.me.id),
+    ]);
+    if ([catalog, wallet, owned, equipped].some((result) => result.error))
+      throw Error('Não foi possível carregar a loja.');
+    return {
+      balance: wallet.data?.balance || 0,
+      catalog: catalog.data || [],
+      owned: (owned.data || []).map((item) => item.item_id),
+      equipped: Object.fromEntries((equipped.data || []).map((item) => [item.kind, item.item_id])),
+    };
+  }
+
+  async purchase(item) {
+    if (!/^[a-z0-9_]{1,40}$/.test(item)) throw Error('Item inválido.');
+    const { error } = await this.db.rpc('purchase_cosmetic', { p_item: item });
+    if (error) throw Error(error.message || 'Não foi possível comprar o item.');
+    return this.store();
+  }
+
+  async equip(item, kind = 'cape') {
+    if (kind !== 'cape' || (item !== null && !/^[a-z0-9_]{1,40}$/.test(item))) throw Error('Item inválido.');
+    const { error } = await this.db.rpc('equip_cosmetic', { p_item: item, p_kind: kind });
+    if (error) throw Error('Não foi possível equipar o item.');
+    return this.store();
+  }
+
+  async checkout(pack) {
+    if (!['small', 'medium', 'large'].includes(pack)) throw Error('Pacote inválido.');
+    const { data, error } = await this.db.functions.invoke('coin-checkout', { body: { pack } });
+    if (error || !/^https:\/\/checkout\.stripe\.com\//.test(data?.url || ''))
+      throw Error(data?.error || 'Não foi possível abrir o pagamento.');
+    return data.url;
+  }
+
+  async visibleCosmetics(uuids) {
+    const valid = [...new Set(uuids.filter((id) => /^[0-9a-f]{32}$/.test(id)))].slice(0, 100);
+    if (!this.me || !valid.length) return [];
+    const { data, error } = await this.db.rpc('visible_cosmetics', { p_uuids: valid });
+    if (error) throw Error('Não foi possível sincronizar os cosméticos.');
+    return data || [];
   }
 
   async setActivity(activity, server = null) {

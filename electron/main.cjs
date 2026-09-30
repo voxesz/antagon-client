@@ -94,8 +94,100 @@ const discord = new DiscordPresence((event) => {
 const startedAt = Date.now();
 let activityReading = false;
 let community;
+let communityReady, connectCommunity;
+let cosmeticsReading = false;
+let gameActionReading = false;
 function communityEvent(event) {
   if (win && !win.isDestroyed()) win.webContents.send('community:event', event);
+  if (
+    event.type === 'message' &&
+    gameUi.chat &&
+    [event.payload?.sender, event.payload?.recipient].includes(gameUi.chat)
+  )
+    gameUi.messages.push(event.payload);
+  gameUi.dirty = true;
+}
+const gameUi = {
+  chat: null,
+  messages: [],
+  people: null,
+  store: null,
+  notice: '',
+  dirty: true,
+  busy: false,
+  peopleAt: 0,
+};
+const clean = (text) =>
+  String(text ?? '').replace(/[\\\t\r\n]/g, (c) => ({ '\\': '\\\\', '\t': '\\t', '\r': '', '\n': '\\n' })[c]);
+const UUID = /^[0-9a-f-]{36}$/;
+async function gameUiCommand(line) {
+  const [action, a = '', b = ''] = line.split('\t');
+  const body = b.replace(/\\(\\|t|n)/g, (m, c) => (c === 'n' ? '\n' : c === 't' ? '\t' : '\\'));
+  if (action === 'chat' && UUID.test(a)) {
+    gameUi.chat = a;
+    gameUi.messages = await community.messages(a);
+  } else if (action === 'send' && UUID.test(a)) await community.send(a, body);
+  else if (action === 'accept' && UUID.test(a)) await community.accept(a);
+  else if (action === 'remove' && UUID.test(a)) await community.remove(a);
+  else if (action === 'add') gameUi.notice = await community.add(a.trim());
+  else if (action === 'store') gameUi.store = await community.store();
+  else if (action === 'buy') gameUi.store = await community.purchase(a);
+  else if (action === 'equip') gameUi.store = await community.equip(a === 'none' ? null : a);
+  else if (action === 'coins') await shell.openExternal(await community.checkout(a));
+  else if (action === 'admin')
+    return fs.promises.writeFile(path.join(root, 'minecraft/antagon-ui-request.txt'), 'admin');
+  gameUi.peopleAt = 0;
+}
+async function gameUiSync() {
+  if (gameUi.busy || !runtime.child) return;
+  gameUi.busy = true;
+  const game = path.join(root, 'minecraft');
+  try {
+    const commands = (await fs.promises.readdir(game)).filter((f) => /^antagon-ui-cmd-\d+\.txt$/.test(f)).sort();
+    for (const file of commands) {
+      const line = (await fs.promises.readFile(path.join(game, file), 'utf8')).trim();
+      await fs.promises.rm(path.join(game, file), { force: true });
+      if (!community?.me) continue;
+      try {
+        await gameUiCommand(line.slice(0, 1200));
+      } catch (error) {
+        gameUi.notice = error.message;
+      }
+      gameUi.dirty = true;
+    }
+    if (community?.me && (gameUi.dirty || Date.now() - gameUi.peopleAt > 15e3)) {
+      gameUi.people = await community.state();
+      gameUi.peopleAt = Date.now();
+    }
+    gameUi.dirty = false;
+    const people = gameUi.people;
+    const lines = [`updated=${Date.now()}`, `online=${community?.me ? 1 : 0}`];
+    if (community?.me && people) {
+      lines.push(`me=${clean(community.me.name)}`, `notice=${clean(gameUi.notice)}`);
+      for (const f of people.friends)
+        lines.push(`friend=${[f.id, f.name, f.online ? 1 : 0, f.activity, f.server || '', 0].map(clean).join('\t')}`);
+      for (const p of people.incoming) lines.push(`incoming=${clean(p.id)}\t${clean(p.name)}`);
+      for (const p of people.outgoing) lines.push(`outgoing=${clean(p.id)}\t${clean(p.name)}`);
+      if (gameUi.chat) {
+        lines.push(`chat=${gameUi.chat}`);
+        for (const m of gameUi.messages.slice(-40)) {
+          const time = new Date(m.created_at).toTimeString().slice(0, 5);
+          lines.push(`msg=${m.sender === community.me.id ? 1 : 0}\t${time}\t${clean(m.body)}`);
+        }
+      }
+      if (gameUi.store) {
+        lines.push(`balance=${gameUi.store.balance}`);
+        for (const item of gameUi.store.catalog)
+          lines.push(
+            `item=${[item.id, item.name, item.price, gameUi.store.owned.includes(item.id) ? 1 : 0, gameUi.store.equipped?.cape === item.id ? 1 : 0].map(clean).join('\t')}`,
+          );
+      }
+    }
+    atomic(path.join(game, 'antagon-ui-state.txt'), lines.join('\n') + '\n');
+  } catch {
+  } finally {
+    gameUi.busy = false;
+  }
 }
 async function gameActivity() {
   if (activityReading) return;
@@ -119,6 +211,45 @@ async function gameActivity() {
   } catch {
   } finally {
     activityReading = false;
+  }
+}
+const CAPES = ['antagon_cape', 'antagon_logo_cape'];
+async function gameCosmetics() {
+  if (cosmeticsReading || !runtime.child || !community?.me) return;
+  cosmeticsReading = true;
+  try {
+    const game = path.join(root, 'minecraft');
+    const roster = await fs.promises.readFile(path.join(game, 'antagon-players.txt'), 'utf8').catch(() => '');
+    const rows = await community.visibleCosmetics(roster.split(/\s+/));
+    const lines = rows
+      .filter((row) => row.active_client && /^[0-9a-f]{32}$/.test(row.mc_uuid))
+      .map((row) => `${row.mc_uuid}=${CAPES.includes(row.cape) ? row.cape : 'badge'}${row.is_admin ? '_admin' : ''}`);
+    atomic(path.join(game, 'antagon-cosmetics.properties'), lines.join('\n') + '\n');
+  } catch {
+    // Retain the previous snapshot during a temporary network failure.
+  } finally {
+    cosmeticsReading = false;
+  }
+}
+async function gameAction() {
+  if (gameActionReading || !runtime.child) return;
+  gameActionReading = true;
+  const file = path.join(root, 'minecraft/antagon-ui-request.txt');
+  try {
+    const view = (await fs.promises.readFile(file, 'utf8')).trim();
+    await fs.promises.unlink(file);
+    if (!['settings', 'friends', 'store', 'admin'].includes(view)) return;
+    if (view === 'admin' && !(await community?.access())?.isAdmin) return;
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+    win.focus();
+    win.webContents.send('game:open-view', view);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('[ANTAGON] Menu shortcut:', error.message);
+  } finally {
+    gameActionReading = false;
   }
 }
 let refreshingAccount;
@@ -151,7 +282,15 @@ async function startGame(server) {
       emit({ phase: 'preparing', message: 'Autenticando sua conta', percent: 0 });
       active = await microsoftSession();
     }
-    const result = await runtime.launch(settings, active, { server });
+    await communityReady;
+    let access = { isAdmin: false };
+    if (settings.mode === 'microsoft') {
+      if (community?.me?.mcUuid !== active.id) await connectCommunity();
+      if (!community?.me) throw Error('Não foi possível verificar sua conta no Antagon Client.');
+      access = await community.requireActive();
+    }
+    const result = await runtime.launch(settings, active, { server, admin: access.isAdmin });
+    gameCosmetics();
     runtime.child?.once('exit', () => setTimeout(gameActivity, 500));
     return result;
   } catch (e) {
@@ -308,17 +447,20 @@ app.whenReady().then(() => {
   });
   handle('game:launch', () => startGame());
   community = new Community(root, safeStorage, communityEvent);
-  const connectCommunity = async () => {
+  connectCommunity = async () => {
     if (settings.mode !== 'microsoft' || !account) return community.me;
     if (community.me?.mcUuid === account.id) return community.me;
     if (community.me) await community.signOut();
     return community.signIn((await microsoftSession()).accessToken);
   };
-  const communityReady = community
+  communityReady = community
     .restore()
     .catch(() => null)
     .then((me) => me || connectCommunity().catch(() => null));
   setInterval(gameActivity, 5e3).unref();
+  setInterval(gameCosmetics, 15e3).unref();
+  setInterval(gameAction, 250).unref();
+  setInterval(gameUiSync, 500).unref();
   discord.configure(settings);
   gameActivity();
   handle('discord:state', () => discord.state());
@@ -338,6 +480,21 @@ app.whenReady().then(() => {
   handle('community:messages', (id) => (needCommunity(), community.messages(String(id))));
   handle('community:send', (id, body) => (needCommunity(), community.send(String(id), body)));
   handle('community:join', (server) => startGame(String(server || '')));
+  handle('store:state', () => (needCommunity(), community.store()));
+  handle('store:purchase', (item) => (needCommunity(), community.purchase(String(item || ''))));
+  handle('store:equip', (item) => (needCommunity(), community.equip(item === null ? null : String(item || ''))));
+  handle('store:checkout', async (pack) => {
+    needCommunity();
+    const url = await community.checkout(String(pack || ''));
+    await shell.openExternal(url);
+    return true;
+  });
+  handle('admin:access', () => (needCommunity(), community.access()));
+  handle('admin:find', (name) => (needCommunity(), community.adminFind(String(name || '').trim())));
+  handle(
+    'admin:change',
+    (action, id, value) => (needCommunity(), community.adminChange(String(action || ''), String(id || ''), value)),
+  );
   handle('optifine:install', () => {
     if (busy || runtime.child) throw Error('Feche o jogo antes de alterar o OptiFine.');
     return installOptifine();
