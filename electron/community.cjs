@@ -105,7 +105,24 @@ class Community {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presence' }, changed('presence'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, changed('friendships'))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, changed('message'))
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `recipient=eq.${this.me.id}` },
+        (payload) => {
+          this.emit({ type: 'call', payload: payload.new });
+          this.db
+            .from('call_signals')
+            .delete()
+            .eq('id', payload.new.id)
+            .then(() => {});
+        },
+      )
       .subscribe();
+    this.db
+      .from('call_signals')
+      .delete()
+      .eq('recipient', this.me.id)
+      .then(() => {});
   }
 
   stop() {
@@ -261,6 +278,24 @@ class Community {
     const { error } = await this.db.rpc('equip_cosmetic', { p_item: item, p_kind: kind });
     if (error) throw Error('Não foi possível equipar o item.');
     return this.store();
+  }
+
+  /** Signals are queued so an offer always reaches the peer before its ICE candidates. */
+  callSignal(recipient, callId, kind, payload = {}) {
+    validateId(recipient);
+    validateId(callId);
+    const send = async () => {
+      const { error } = await this.db.from('call_signals').insert({ recipient, call_id: callId, kind, payload });
+      if (error) throw Error('Não foi possível falar com seu amigo. Vocês precisam ser amigos.');
+    };
+    const next = (this.signals || Promise.resolve()).then(send, send);
+    this.signals = next.catch(() => {});
+    return next;
+  }
+
+  async iceServers() {
+    const { data, error } = await this.db.functions.invoke('ice-servers');
+    return !error && Array.isArray(data?.iceServers) ? data.iceServers : [{ urls: 'stun:stun.l.google.com:19302' }];
   }
 
   async checkout(pack) {

@@ -1,5 +1,6 @@
 import { setWallpaper } from './wallpaper.js';
 import { createSettingsStore, createConversation } from './state.mjs';
+import { createCalls } from './call.js';
 
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
@@ -14,6 +15,13 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4e3);
 }
+const calls = createCalls({
+  api,
+  me: () => people.me,
+  nameOf: (id) => people.friends.find((friend) => friend.id === id)?.name,
+  toast,
+  onChange: renderCall,
+});
 async function persist(patch) {
   const request = settingsStore.update(patch);
   settings = settingsStore.value;
@@ -738,8 +746,15 @@ function renderCommunity() {
   const friend = people.friends.find((f) => f.id === conversation.selected);
   $('#chat-empty').hidden = !!friend;
   $('#chat-head').hidden = $('#chat-form').hidden = !friend;
-  if (friend) $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>`;
-  else {
+  if (friend) {
+    const call = calls.state();
+    const inCall = call.people?.some((person) => person.id === friend.id) || call.invited?.includes(friend.name);
+    const button =
+      call.role === 'guest' || inCall || !friend.online
+        ? ''
+        : `<button class="secondary" data-call="${friend.id}">${call.status === 'active' ? 'Chamar para a call' : 'Ligar'}</button>`;
+    $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>${button}`;
+  } else {
     conversation.clear();
     $('#messages').replaceChildren();
   }
@@ -763,14 +778,6 @@ function refreshCommunity() {
     try {
       const next = await community.state();
       if (revision !== communityRevision) return;
-      if (loaded) {
-        const previousFriends = new Map(people.friends.map((person) => [person.id, person]));
-        const previousRequests = new Set(people.incoming.map((person) => person.id));
-        for (const friend of next.friends)
-          if (friend.online && !previousFriends.get(friend.id)?.online) toast(friend.name + ' está online');
-        for (const person of next.incoming)
-          if (!previousRequests.has(person.id)) toast(person.name + ' quer ser seu amigo');
-      }
       people = next;
       loaded = true;
       renderCommunity();
@@ -886,7 +893,59 @@ $('#chat-form').onsubmit = async (e) => {
     if (conversation.selected === recipient && !$('#chat-input').value) $('#chat-input').value = text;
   }
 };
+community.onNotify((notice) => {
+  const card = document.createElement('div');
+  card.className = 'notice';
+  const head = document.createElement('img');
+  head.alt = '';
+  head.src = /^[0-9a-f]{32}$/.test(notice.uuid || '')
+    ? `https://mc-heads.net/avatar/${notice.uuid}/32`
+    : '../assets/g-light.svg';
+  const text = document.createElement('span');
+  const name = document.createElement('b');
+  name.textContent = notice.name;
+  text.append(name, document.createTextNode(' ' + notice.text));
+  card.append(head, text);
+  card.onclick = () => ($('[data-view="friends"]').click(), card.remove());
+  $('#notices').append(card);
+  while ($('#notices').children.length > 3) $('#notices').firstChild.remove();
+  setTimeout(() => card.classList.add('leaving'), 5e3);
+  setTimeout(() => card.remove(), 5.4e3);
+});
+function renderCall(state = calls.state()) {
+  const panel = $('#call-panel');
+  panel.hidden = !state.status;
+  if (state.status === 'incoming')
+    panel.innerHTML = `<span><b>${escape(state.hostName)}</b> está te chamando para uma call</span><button class="primary" data-call-action="accept">Atender</button><button class="danger" data-call-action="decline">Recusar</button>`;
+  else if (state.status === 'active') {
+    const names = state.people.filter((person) => person.id !== people.me?.id).map((person) => person.name);
+    const waiting = state.invited?.length ? ` · chamando ${state.invited.join(', ')}` : '';
+    panel.innerHTML = `<span><b>Em call</b>${escape(names.length ? ' com ' + names.join(', ') : '')}${escape(waiting)}</span><button class="secondary" data-call-action="mute">${state.muted ? 'Ativar microfone' : 'Mutar'}</button><button class="danger" data-call-action="end">Sair</button>`;
+  }
+  renderCommunity();
+}
+$('#call-panel').onclick = (event) => {
+  const action = event.target.closest('[data-call-action]')?.dataset.callAction;
+  if (action === 'accept') calls.accept();
+  else if (action === 'decline') calls.decline();
+  else if (action === 'mute') calls.mute();
+  else if (action === 'end') calls.end();
+};
+$('#chat-head').onclick = (event) => {
+  const id = event.target.closest('[data-call]')?.dataset.call;
+  const friend = people.friends.find((person) => person.id === id);
+  if (friend) calls.start(friend);
+};
+api.call.onCommand(({ action, id }) => {
+  const friend = people.friends.find((person) => person.id === id);
+  if (action === 'call' && friend) calls.start(friend);
+  else if (action === 'call-accept') calls.accept();
+  else if (action === 'call-decline') calls.decline();
+  else if (action === 'call-mute') calls.mute();
+  else if (action === 'call-leave') calls.end();
+});
 community.onEvent((event) => {
+  if (event.type === 'call') return calls.receive(event.payload);
   if (event.type !== 'message') return refreshSoon();
   const m = event.payload;
   const other = m.sender === people.me?.id ? m.recipient : m.sender;

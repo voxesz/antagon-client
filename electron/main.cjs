@@ -1,4 +1,13 @@
-const { app, BrowserWindow, ipcMain, safeStorage, shell, dialog } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  safeStorage,
+  shell,
+  dialog,
+  Notification,
+  systemPreferences,
+} = require('electron');
 const { unzipSync } = require('fflate');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -12,6 +21,8 @@ const { Community, cosmeticUrl, isCapeTexture } = require('./community.cjs');
 const { DiscordPresence } = require('./discord.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 app.setName('Antagon Client');
+// Call audio must play when a friend joins while the launcher is in the background.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const root = process.env.ANTAGON_TEST_ROOT || path.join(app.getPath('appData'), 'Antagon Client');
 app.setPath('userData', root);
 const ui = path.resolve(__dirname, '../ui/index.html');
@@ -97,8 +108,56 @@ let community;
 let communityReady, connectCommunity;
 let cosmeticsReading = false;
 let gameActionReading = false;
+// Friend notifications: diffed in the main process so they reach the launcher, the game and the OS.
+const notifier = { me: null, people: null, busy: false, timer: null, seq: 0 };
+function notify(kind, person, text) {
+  const notice = { kind, name: person?.name || 'Jogador', uuid: person?.mcUuid || null, text };
+  const visible = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  if (runtime.child) {
+    const id = `${Date.now()}${String(notifier.seq++ % 1e4).padStart(4, '0')}`;
+    atomic(path.join(root, 'minecraft', `antagon-notify-${id}.txt`), [kind, notice.name, text].map(clean).join('\t'));
+  } else if (!visible && kind !== 'message' && Notification.isSupported())
+    new Notification({ title: notice.name, body: text, silent: false }).show();
+  if (kind !== 'message' && win && !win.isDestroyed()) win.webContents.send('community:notify', notice);
+}
+async function checkNotifications() {
+  if (notifier.busy || !community?.me) return;
+  notifier.busy = true;
+  try {
+    if (notifier.me !== community.me.id) notifier.people = null;
+    notifier.me = community.me.id;
+    const next = await community.state();
+    const previous = notifier.people;
+    notifier.people = next;
+    if (!previous) return;
+    const friends = new Map(previous.friends.map((person) => [person.id, person]));
+    const incoming = new Set(previous.incoming.map((person) => person.id));
+    const outgoing = new Set(previous.outgoing.map((person) => person.id));
+    for (const friend of next.friends) {
+      const before = friends.get(friend.id);
+      if (!before && outgoing.has(friend.id)) notify('accepted', friend, 'aceitou seu pedido de amizade');
+      else if (before && friend.online && !before.online) notify('online', friend, 'está online');
+    }
+    for (const person of next.incoming) if (!incoming.has(person.id)) notify('request', person, 'quer ser seu amigo');
+  } catch {
+  } finally {
+    notifier.busy = false;
+  }
+}
 function communityEvent(event) {
   if (win && !win.isDestroyed()) win.webContents.send('community:event', event);
+  if (event.type === 'presence' || event.type === 'friendships') {
+    clearTimeout(notifier.timer);
+    notifier.timer = setTimeout(checkNotifications, 1500);
+  }
+  if (event.type === 'call' && event.payload?.kind === 'invite') {
+    const host = notifier.people?.friends.find((friend) => friend.id === event.payload.sender);
+    if (host) notify('call', host, 'está te chamando para uma call');
+  }
+  if (event.type === 'message' && event.payload?.recipient === community?.me?.id) {
+    const sender = notifier.people?.friends.find((friend) => friend.id === event.payload.sender);
+    if (sender) notify('message', sender, String(event.payload.body || '').slice(0, 120));
+  }
   if (
     event.type === 'message' &&
     gameUi.chat &&
@@ -112,6 +171,7 @@ const gameUi = {
   messages: [],
   people: null,
   store: null,
+  call: null,
   notice: '',
   dirty: true,
   busy: false,
@@ -137,6 +197,8 @@ async function gameUiCommand(line) {
     if (item) gameUi.store = await community.equip(item.id, item.kind);
   } else if (action === 'unequip' && ['cape', 'hat'].includes(a)) gameUi.store = await community.equip(null, a);
   else if (action === 'coins') await shell.openExternal(await community.checkout(a));
+  else if (/^call(-accept|-decline|-mute|-leave)?$/.test(action) && win && !win.isDestroyed())
+    win.webContents.send('call:command', { action, id: UUID.test(a) ? a : null });
   else if (action === 'admin')
     return fs.promises.writeFile(path.join(root, 'minecraft/antagon-ui-request.txt'), 'admin');
   gameUi.peopleAt = 0;
@@ -177,6 +239,11 @@ async function gameUiSync() {
           const time = new Date(m.created_at).toTimeString().slice(0, 5);
           lines.push(`msg=${m.sender === community.me.id ? 1 : 0}\t${time}\t${clean(m.body)}`);
         }
+      }
+      const call = gameUi.call;
+      if (call?.status) {
+        lines.push(`call=${[call.status, call.muted ? 1 : 0, call.hostName || ''].map(clean).join('\t')}`);
+        for (const person of call.people || []) lines.push(`callpeer=${clean(person.id)}\t${clean(person.name)}`);
       }
       if (gameUi.store) {
         const { balance, catalog, owned, equipped } = gameUi.store;
@@ -485,11 +552,13 @@ app.whenReady().then(() => {
   communityReady = community
     .restore()
     .catch(() => null)
-    .then((me) => me || connectCommunity().catch(() => null));
+    .then((me) => me || connectCommunity().catch(() => null))
+    .then((me) => (checkNotifications(), me));
   setInterval(gameActivity, 5e3).unref();
   setInterval(gameCosmetics, 15e3).unref();
   setInterval(gameAction, 250).unref();
   setInterval(gameUiSync, 500).unref();
+  setInterval(checkNotifications, 20e3).unref();
   discord.configure(settings);
   gameActivity();
   handle('discord:state', () => discord.state());
@@ -523,6 +592,21 @@ app.whenReady().then(() => {
     const url = await community.checkout(String(pack || ''));
     await shell.openExternal(url);
     return true;
+  });
+  handle(
+    'call:signal',
+    (to, callId, kind, payload) => (
+      needCommunity(),
+      community.callSignal(String(to || ''), String(callId || ''), String(kind || ''), payload || {})
+    ),
+  );
+  handle('call:ice', () => (needCommunity(), community.iceServers()));
+  handle('call:microphone', () =>
+    process.platform === 'darwin' ? systemPreferences.askForMediaAccess('microphone') : true,
+  );
+  handle('call:report', (state) => {
+    gameUi.call = state && typeof state === 'object' ? state : null;
+    gameUi.dirty = true;
   });
   handle('admin:access', () => (needCommunity(), community.access()));
   handle('admin:catalog', () => (needCommunity(), community.adminCatalog()));

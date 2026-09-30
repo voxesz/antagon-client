@@ -28,6 +28,7 @@ const screenshots = [
   'antagon-hub-store.png',
   'antagon-hub-inventory.png',
   'antagon-crown.png',
+  'antagon-notice.png',
   'antagon-item-physics.png',
 ];
 

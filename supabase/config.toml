@@ -182,3 +182,6 @@ verify_jwt = true
 
 [functions.coin-webhook]
 verify_jwt = false
+
+[functions.ice-servers]
+verify_jwt = true

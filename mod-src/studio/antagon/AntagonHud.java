@@ -1762,6 +1762,12 @@ public class AntagonHud {
                                         + "\n"
                                         + "msg=0\t19:02\tbora um bedwars?\n"
                                         + "msg=1\t19:03\tbora! me chama no servidor\n"
+                                        + "call=active\t0\tAntagonTest\n"
+                                        + "callpeer=00000000-0000-4000-8000-000000000000"
+                                        + "\tAntagonTest\n"
+                                        + "callpeer="
+                                        + friend
+                                        + "\tAmigoTeste\n"
                                         + "balance=250\n"
                                         + "item=antagon_cape\tCapa Antagon\t100\t0\t0\t1\tcape\n"
                                         + "item=antagon_logo_cape\tCapa Logo Antagon\t100\t1\t0\t0"
@@ -1788,6 +1794,11 @@ public class AntagonHud {
                     break;
                 case 673:
                     shot("antagon-hub-inventory.png");
+                    Files.write(
+                            new File("antagon-notify-" + System.currentTimeMillis() + "0000.txt")
+                                    .toPath(),
+                            "accepted\tAmigoTeste\taceitou seu pedido de amizade"
+                                    .getBytes(StandardCharsets.UTF_8));
                     call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
                     break;
                 case 675:
@@ -1881,6 +1892,9 @@ public class AntagonHud {
                         config.setProperty("fullbright", "true");
                         setF(self, PITCH, 60f);
                     }
+                    break;
+                case 690:
+                    shot("antagon-notice.png");
                     break;
                 case 695:
                     shot("antagon-item-physics.png");
@@ -2011,6 +2025,96 @@ public class AntagonHud {
                 x + (w - width(label)) / 2,
                 y + 4,
                 pressed && active == COLORS[0] ? 0xFF1E1E1E : WHITE);
+    }
+
+    /** Friend notifications written by the launcher (antagon-notify-<millis><seq>.txt). */
+    private final List<String[]> notices = new ArrayList<String[]>();
+
+    private long noticeScan, noticeStart;
+
+    private void pollNotices() {
+        if (System.currentTimeMillis() - noticeScan < 500) return;
+        noticeScan = System.currentTimeMillis();
+        File[] files =
+                new File(".").listFiles((dir, name) -> name.matches("antagon-notify-\\d+\\.txt"));
+        if (files == null || files.length == 0) return;
+        Arrays.sort(files, (a, b) -> a.getName().compareTo(b.getName()));
+        for (File file : files) {
+            try {
+                String name = file.getName();
+                long sent = Long.parseLong(name.substring(15, Math.min(name.length() - 4, 28)));
+                String[] v =
+                        new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)
+                                .split("\t", -1);
+                if (v.length >= 3
+                        && System.currentTimeMillis() - sent < 30000
+                        && notices.size() < 5) {
+                    for (int i = 0; i < v.length; i++) v[i] = unescapeField(v[i]);
+                    notices.add(v);
+                }
+            } catch (Exception ignored) {
+            }
+            file.delete();
+        }
+    }
+
+    /** Drawn in the HUD while playing and after the screen while a menu is open. */
+    @SubscribeEvent
+    public void hudNotices(RenderGameOverlayEvent.Post event) {
+        try {
+            if (event.type == RenderGameOverlayEvent.ElementType.ALL
+                    && field(mc, "field_71462_r", "currentScreen") == null) drawNotices();
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void screenNotices(GuiScreenEvent.DrawScreenEvent.Post event) {
+        drawNotices();
+    }
+
+    private void drawNotices() {
+        pollNotices();
+        if (notices.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        if (noticeStart == 0) noticeStart = now;
+        long age = now - noticeStart;
+        if (age > 4500) {
+            notices.remove(0);
+            noticeStart = 0;
+            return;
+        }
+        boolean begun = false;
+        try {
+            String[] n = notices.get(0);
+            int[] g = gui();
+            float sw = (float) Math.ceil(g[0] / (double) g[2]), w = 210, h = 42;
+            float slide = age < 200 ? (200 - age) / 200f : age > 4200 ? (age - 4200) / 300f : 0;
+            float x = (sw - w) / 2, y = 6 - slide * (h + 10);
+            begin(1);
+            begun = true;
+            rect(x + 3, y + 3, w, h, 0x60000000);
+            rect(x, y, w, h, 0xF419191C);
+            outline(x, y, w, h, 0xFF353539);
+            rect(x, y, 2, h, RED);
+            image(
+                    n[0].equals("message") ? "chat.png" : "logo.png",
+                    x + 10,
+                    y + 13,
+                    16,
+                    16,
+                    0,
+                    0,
+                    1,
+                    1);
+            text(fit(n[1], w - 44), x + 34, y + 5, WHITE);
+            text(fit(n[2], w - 44), x + 34, y + 21, GRAY);
+        } catch (Throwable e) {
+            report(e);
+        } finally {
+            if (begun) end();
+        }
     }
 
     private int[] gui() throws Exception {
@@ -3202,12 +3306,15 @@ public class AntagonHud {
         long lastRead = 0, updated = 0;
         boolean online = false;
         String me = "", notice = "", chat = null, typing = null, addText = "", chatText = "";
+        String callStatus = "", callHost = "";
+        boolean callMuted;
         int balance = -1, listScroll = 0, page = 0;
         final List<String[]> friends = new ArrayList<String[]>(),
                 incoming = new ArrayList<String[]>(),
                 outgoing = new ArrayList<String[]>(),
                 messages = new ArrayList<String[]>(),
-                items = new ArrayList<String[]>();
+                items = new ArrayList<String[]>(),
+                callPeers = new ArrayList<String[]>();
         final Map<String, float[]> hits = new LinkedHashMap<String, float[]>();
 
         Hub(GuiScreen parent, String tab) {
@@ -3244,6 +3351,8 @@ public class AntagonHud {
                 outgoing.clear();
                 messages.clear();
                 items.clear();
+                callPeers.clear();
+                callStatus = callHost = "";
                 String stateChat = null;
                 for (String line : lines) {
                     int eq = line.indexOf('=');
@@ -3262,6 +3371,11 @@ public class AntagonHud {
                     else if (key.equals("msg") && v.length >= 3) messages.add(v);
                     else if (key.equals("balance")) balance = Integer.parseInt(v[0]);
                     else if (key.equals("item") && v.length >= 7) items.add(v);
+                    else if (key.equals("call") && v.length >= 3) {
+                        callStatus = v[0];
+                        callMuted = v[1].equals("1");
+                        callHost = v[2];
+                    } else if (key.equals("callpeer") && v.length >= 2) callPeers.add(v);
                 }
                 if (chat != null && !chat.equals(stateChat)) messages.clear();
             } catch (Exception e) {
@@ -3387,9 +3501,10 @@ public class AntagonHud {
             for (String[] f : sorted) rows.add(new String[] {"f", f[0]});
             for (String[] p : outgoing) rows.add(new String[] {"out", p[0], p[1]});
             float y = top + 26, bottom = y0 + H - 24;
+            float listEnd = callStatus.isEmpty() ? bottom : bottom - 50;
             int max = Math.max(0, rows.size() - 8);
             listScroll = Math.max(0, Math.min(listScroll, max));
-            for (int i = listScroll; i < rows.size() && y < bottom - 18; i++) {
+            for (int i = listScroll; i < rows.size() && y < listEnd - 18; i++) {
                 String[] row = rows.get(i);
                 if (row[0].equals("#")) {
                     text(row[1], lx, y + 2, GRAY);
@@ -3421,6 +3536,7 @@ public class AntagonHud {
                     y += 30;
                 }
             }
+            if (!callStatus.isEmpty()) drawCall(lx, listEnd - 4, lw, 50, mx, my);
             float cx = x0 + 192, cw = W - 202;
             rect(cx - 6, top, 1, bottom - top, 0xFF303035);
             String[] f = chat == null ? null : friend(chat);
@@ -3433,6 +3549,16 @@ public class AntagonHud {
             text(fit(activity(f), cw - 70), cx, top + 13, GRAY);
             if (f[3].equals("server") && !f[4].isEmpty())
                 button("join:" + f[4], "ENTRAR", cx + cw - 60, top, 60, 20, mx, my, true);
+            boolean inCall = false;
+            for (String[] p : callPeers) inCall |= p[0].equals(f[0]);
+            if (f[2].equals("1")
+                    && !inCall
+                    && !callStatus.equals("incoming")
+                    && callHost.equals(callStatus.isEmpty() ? "" : me)) {
+                String label = callStatus.isEmpty() ? "LIGAR" : "CHAMAR";
+                float bx = cx + cw - (f[3].equals("server") && !f[4].isEmpty() ? 126 : 60);
+                button("call:" + f[0], label, bx, top, 60, 20, mx, my, false);
+            }
             rect(cx, top + 28, cw, 1, 0xFF303035);
             List<String[]> lines = new ArrayList<String[]>();
             for (String[] m : messages)
@@ -3498,6 +3624,36 @@ public class AntagonHud {
                 }
             }
             image(texture, x, y, 40, 64, 1 / 64f, 1 / 32f, 11 / 64f, 17 / 32f);
+        }
+
+        void drawCall(float x, float y, float w, float h, int mx, int my) {
+            rect(x, y, w, h, 0xFF1C2A1E);
+            rect(x, y, 2, h, 0xFF7BD66A);
+            if (callStatus.equals("incoming")) {
+                text(fit(callHost + " TE CHAMANDO", w - 12), x + 8, y + 2, WHITE);
+                button("callaccept", "ATENDER", x + 8, y + 24, 76, 20, mx, my, true);
+                button("calldecline", "RECUSAR", x + 88, y + 24, 76, 20, mx, my, false);
+                return;
+            }
+            StringBuilder names = new StringBuilder();
+            for (String[] p : callPeers)
+                if (!p[1].equals(me)) names.append(names.length() == 0 ? "" : ", ").append(p[1]);
+            text(
+                    fit(names.length() == 0 ? "CHAMANDO..." : "CALL: " + names, w - 12),
+                    x + 8,
+                    y + 2,
+                    WHITE);
+            button(
+                    "callmute",
+                    callMuted ? "DESMUTAR" : "MUTAR",
+                    x + 8,
+                    y + 24,
+                    76,
+                    20,
+                    mx,
+                    my,
+                    false);
+            button("callleave", "SAIR", x + 88, y + 24, 76, 20, mx, my, true);
         }
 
         void drawStore(int mx, int my, boolean inventory) throws Exception {
@@ -3658,6 +3814,11 @@ public class AntagonHud {
             else if (hit.startsWith("page:")) page += Integer.parseInt(hit.substring(5));
             else if (hit.startsWith("coins:")) command("coins", hit.substring(6));
             else if (hit.startsWith("join:")) joinServer(hit.substring(5));
+            else if (hit.startsWith("call:")) command("call", hit.substring(5));
+            else if (hit.equals("callaccept")) command("call-accept");
+            else if (hit.equals("calldecline")) command("call-decline");
+            else if (hit.equals("callmute")) command("call-mute");
+            else if (hit.equals("callleave")) command("call-leave");
         }
     }
 

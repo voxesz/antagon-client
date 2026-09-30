@@ -31,6 +31,22 @@ contextBridge.exposeInMainWorld('antagon', {
       ipcRenderer.on('community:event', listener);
       return () => ipcRenderer.removeListener('community:event', listener);
     },
+    onNotify: (fn) => {
+      const listener = (_, notice) => fn(notice);
+      ipcRenderer.on('community:notify', listener);
+      return () => ipcRenderer.removeListener('community:notify', listener);
+    },
+  },
+  call: {
+    signal: (to, callId, kind, payload) => call('call:signal', to, callId, kind, payload),
+    iceServers: () => call('call:ice'),
+    microphone: () => call('call:microphone'),
+    report: (state) => call('call:report', state),
+    onCommand: (fn) => {
+      const listener = (_, command) => fn(command);
+      ipcRenderer.on('call:command', listener);
+      return () => ipcRenderer.removeListener('call:command', listener);
+    },
   },
   store: {
     state: () => call('store:state'),

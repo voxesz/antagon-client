@@ -234,6 +234,18 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.match(await page.locator('#store-inventory').textContent(), /Capa Logo Antagon/);
     assert.equal(await page.locator('#store-packs').isVisible(), false);
     await page.screenshot({ path: path.join(root, 'build/inventory-preview.png') });
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.send('community:notify', {
+        kind: 'accepted',
+        name: 'AmigoTeste',
+        uuid: null,
+        text: 'aceitou seu pedido de amizade',
+      }),
+    );
+    await page.waitForSelector('#notices .notice');
+    assert.match(await page.locator('#notices').textContent(), /AmigoTeste aceitou seu pedido de amizade/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(root, 'build/notice-preview.png') });
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log(
       'UI OK: loja, admin, navegação, animações suspensas, movimento reduzido, configurações rápidas, perfil e Discord.',

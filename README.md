@@ -42,6 +42,10 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Fundos animados suspensos fora da tela inicial e durante o jogo
 - Loja de cosméticos com ANTAGOIN$: capas, Coroa Antagon em 3D e inventário associado à conta Microsoft (itens retirados
   da loja continuam no inventário de quem já tem)
+- Calls de voz entre amigos (até 5 pessoas): quem chama hospeda a call no próprio PC e repassa o áudio dos convidados;
+  controle pelo launcher ou pelo menu Amigos dentro do jogo
+- Notificações de amigo online, pedido recebido, pedido aceito, mensagem e convite de call no launcher, no jogo e no
+  sistema
 - Tag Antagon no chat, logo ao lado do ping no tab (dourada para admins), e cosméticos visíveis para outros jogadores com
   o client e sessão de comunidade ativa
 
@@ -111,6 +115,11 @@ A migração `supabase/migrations/20260930000000_cosmetics.sql` cria catálogo, 
 as operações atômicas de compra. O cliente nunca grava saldo diretamente. O launcher envia ao banco apenas os UUIDs
 da lista de jogadores; o jogo recebe um arquivo local com tags e capas, sem receber tokens da conta. A capa Antagon
 equipada também assume a textura de capa do OptiFine durante a partida.
+
+As calls usam WebRTC; a Supabase só transporta a sinalização (`call_signals`, apenas entre amigos). A função
+`ice-servers` entrega servidores STUN e, se os segredos `CLOUDFLARE_TURN_KEY_ID` e `CLOUDFLARE_TURN_KEY_API_TOKEN`
+estiverem definidos, um relay TURN da Cloudflare para redes com CGNAT. `npm run test:call` simula uma call com três
+participantes e microfone falso.
 
 Para ativar pagamentos, aplique as migrações no projeto Supabase e publique as funções `coin-checkout` e `coin-webhook`.
 Configure os segredos `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` e `CHECKOUT_RETURN_URL` (uma URL HTTPS de retorno após
