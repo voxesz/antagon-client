@@ -1,6 +1,6 @@
 import { setWallpaper } from './wallpaper.js';
 import { createSettingsStore, createConversation } from './state.mjs';
-import { createCalls } from './call.js';
+import { mountRadio } from './radio.js';
 
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
@@ -15,18 +15,13 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4e3);
 }
-const calls = createCalls({
-  api,
-  me: () => people.me,
-  nameOf: (id) => people.friends.find((friend) => friend.id === id)?.name,
-  toast,
-  onChange: renderCall,
-});
+const radio = mountRadio(api.radio, toast);
 async function persist(patch) {
   const request = settingsStore.update(patch);
   settings = settingsStore.value;
   await request;
   settings = settingsStore.value;
+  renderQuickSettings();
 }
 
 function action(selector, handler, error = (e) => toast(e.message)) {
@@ -57,7 +52,7 @@ function setting(selector, key, read) {
 $$('[data-view]').forEach(
   (tab) =>
     (tab.onclick = () => {
-      $$('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+      $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === tab.dataset.view));
       $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
       if (tab.dataset.view === 'friends' && conversation.selected) {
         unread.delete(conversation.selected);
@@ -65,11 +60,13 @@ $$('[data-view]').forEach(
         renderMessages();
       }
       if (tab.dataset.view === 'store') refreshStore();
+      if (tab.dataset.view === 'play') refreshFeatured();
+      if (tab.dataset.view === 'radio') radio.open();
       if (tab.dataset.view === 'admin') refreshAdminAccess();
     }),
 );
 api.onOpenView((view) => {
-  if (!['settings', 'friends', 'store', 'admin'].includes(view)) return;
+  if (!['settings', 'friends', 'store', 'admin', 'radio'].includes(view)) return;
   const tab = $(`[data-view="${view}"]`);
   if (tab && !tab.hidden) tab.click();
 });
@@ -77,6 +74,8 @@ function renderProfile() {
   const microsoft = settings.mode === 'microsoft' && account,
     name = microsoft ? account.name : settings.nickname;
   $('#profile-name').textContent = name;
+  $('#home-account-name').textContent = name;
+  $('#home-account-mode').textContent = microsoft ? 'Microsoft' : 'Offline';
   $('#profile-mode').textContent = microsoft ? 'Microsoft' : 'Offline';
   $('#profile-admin').hidden = !adminAccess.isAdmin;
   $('#avatar').textContent = name[0].toUpperCase();
@@ -164,6 +163,8 @@ function updateState(state) {
           ? 'ABRINDO…'
           : 'JOGAR';
   for (const button of $$('#optifine-install, #optifine-remove')) button.disabled = working;
+  for (const input of $$('#game-version, #home-memory, #home-fullscreen, #home-account, #home-mods'))
+    input.disabled = working;
   $('#progress-track').style.display = ['preparing', 'updating'].includes(state.phase) ? 'block' : 'none';
   $('#update').disabled = working;
   $('#progress-bar').style.width = Math.max(0, Math.min(100, state.percent || 0)) + '%';
@@ -185,14 +186,38 @@ $('#launch').onclick = async () => {
 };
 $('#memory').oninput = (e) => ($('#memory-value').textContent = e.target.value + ' GB');
 setting('#memory', 'memory', (input) => Number(input.value));
+$('#game-version').onchange = async (event) => {
+  try {
+    await persist({ gameVersion: event.target.value });
+    renderVersion(settings.gameVersion);
+  } catch (e) {
+    toast(e.message);
+  }
+};
 setting('#fullscreen', 'fullscreen', (input) => input.checked);
-setting('#pack-toggle', 'pack', (input) => input.checked);
+setting('#home-memory', 'memory', (input) => Number(input.value));
+setting('#home-fullscreen', 'fullscreen', (input) => input.checked);
+function renderQuickSettings() {
+  for (const id of ['#memory', '#home-memory']) $(id).value = settings.memory;
+  $('#memory-value').textContent = settings.memory + ' GB';
+  for (const id of ['#fullscreen', '#home-fullscreen']) $(id).checked = settings.fullscreen;
+}
+$('#home-account').onclick = () => $('#profile-open').click();
+$('#home-settings').onclick = () => $('.tab[data-view="settings"]').click();
+$('#home-store').onclick = () => $('.tab[data-view="store"]').click();
+$('#home-mods').onclick = () => {
+  $('.tab[data-view="settings"]').click();
+  $(settings.gameVersion === 'latest-26' ? '#fabric-row' : '#optifine-row').scrollIntoView({ block: 'center' });
+};
 setting('#share-server', 'shareServer', (input) => input.checked);
 setting('#discord-presence', 'discordPresence', (input) => input.checked);
 api.discord.onState((state) => {
   $('#discord-state').textContent = state.message;
 });
+let optifineFile = null;
 function renderOptifine(file) {
+  optifineFile = file;
+  renderHomeMods();
   $('#optifine-state').textContent = file || 'Não instalado';
   $('#optifine-install').textContent = file ? 'Trocar' : 'Instalar';
   $('#optifine-remove').hidden = !file;
@@ -245,15 +270,6 @@ $('#update').onclick = async () => {
     toast(e.message);
   }
 };
-function renderBackground(mode) {
-  document.body.dataset.background = mode;
-  $('#background-switch').textContent = 'Fundo: ' + (mode === 'ascii' ? 'Logo' : 'Paisagem');
-}
-action('#background-switch', async () => {
-  const background = settings.background === 'ascii' ? 'scene' : 'ascii';
-  renderBackground(background);
-  await persist({ background });
-});
 action('#open-folder', async () => {
   if (await api.openFolder()) toast('A pasta será criada ao abrir o jogo pela primeira vez.');
 });
@@ -307,6 +323,45 @@ function itemPreview(item) {
 }
 const itemDescription = (item) =>
   ITEMS[item.id]?.description || (item.kind === 'hat' ? 'Acessório para a cabeça.' : 'Capa exclusiva.');
+let featuredRequest = null;
+function refreshFeatured() {
+  if (featuredRequest) return featuredRequest;
+  featuredRequest = (async () => {
+    const target = $('#featured-items');
+    try {
+      const items = await api.store.featured();
+      target.innerHTML = items.length
+        ? items
+            .map(
+              (item) =>
+                `<button class="featured-card" data-featured-item="${escape(item.id)}" aria-label="Ver ${escape(item.name)} na loja"><span class="featured-art"><span class="featured-kind">${item.kind === 'hat' ? 'Acessório' : 'Capa'}</span>${itemPreview(item)}</span><span class="featured-info"><span><b>${escape(item.name)}</b><span class="featured-price"><img src="../assets/antagon-coin.png" alt="" />${Number(item.price).toLocaleString('pt-BR')} ANTAGOIN$</span></span><span class="featured-arrow" aria-hidden="true">↗</span></span></button>`,
+            )
+            .join('')
+        : '<p class="featured-empty">Novos destaques em breve. Explore os cosméticos na loja.</p>';
+    } catch {
+      target.innerHTML =
+        '<p class="featured-empty">Não foi possível carregar os destaques. <button id="featured-retry" class="text-button">Tentar novamente</button></p>';
+    }
+  })().finally(() => {
+    featuredRequest = null;
+  });
+  return featuredRequest;
+}
+$('#featured-items').onclick = async (event) => {
+  if (event.target.closest('#featured-retry')) return refreshFeatured();
+  const card = event.target.closest('[data-featured-item]');
+  if (!card) return;
+  storeTab = 'shop';
+  $('.tab[data-view="store"]').click();
+  await refreshStore();
+  const item = [...$$('#store-items [data-store-item]')].find(
+    (button) => button.dataset.storeItem === card.dataset.featuredItem,
+  );
+  if (item) {
+    item.scrollIntoView({ block: 'center' });
+    item.focus({ preventScroll: true });
+  }
+};
 let storeTab = 'shop';
 function storeCard(item, available) {
   const owned = storeState?.owned?.includes(item.id);
@@ -319,7 +374,7 @@ function storeCard(item, available) {
   return `<article class="store-item"><div class="cape-preview">${itemPreview(item)}</div><div><h3>${escape(item.name)}</h3><p>${escape(itemDescription(item))}</p>${price}</div><button class="${equipped ? 'secondary' : 'primary'}" data-store-item="${escape(item.id)}" data-store-kind="${item.kind}" data-store-action="${action}" ${available ? '' : 'disabled'}>${label}</button></article>`;
 }
 function renderStore() {
-  const available = !!storeState?.catalog?.length;
+  const available = Array.isArray(storeState?.catalog);
   const catalog = available
     ? storeState.catalog
     : Object.entries(ITEMS).map(([id, item]) => ({ id, name: item.name, kind: item.kind, price: 100, active: true }));
@@ -357,6 +412,7 @@ async function refreshAdminAccess() {
     }
   }
   $('#admin-tab').hidden = !adminAccess.isAdmin;
+  radio.access(adminAccess);
   $('#profile-admin').hidden = !adminAccess.isAdmin;
   if (adminAccess.isAdmin) refreshCatalog();
   if (!adminAccess.isAdmin) {
@@ -448,10 +504,8 @@ function renderCatalog() {
     ? adminCatalog
         .map((item) => {
           const id = escape(item.id);
-          const remove = item.custom
-            ? `<button class="danger" data-catalog-action="delete" data-catalog-item="${id}">Excluir</button>`
-            : '';
-          return `<div class="catalog-row"><div class="catalog-thumb">${itemPreview(item)}</div><span><b>${escape(item.name)}</b><small>${item.kind === 'hat' ? 'Acessório' : 'Capa'} · ${item.price} ANTAGOIN$ · ${item.owners} ${item.owners === 1 ? 'dono' : 'donos'}</small></span><span class="catalog-state ${item.active ? 'on' : ''}">${item.active ? 'Na loja' : 'Fora da loja'}</span><div class="catalog-actions"><button class="${item.mine ? 'secondary' : 'primary'}" data-catalog-action="take" data-catalog-item="${id}" data-mine="${item.mine ? 1 : 0}">${item.mine ? 'Devolver' : 'Pegar'}</button><button class="secondary" data-catalog-action="active" data-catalog-item="${id}" data-active="${item.active ? 1 : 0}">${item.active ? 'Tirar da loja' : 'Colocar na loja'}</button>${remove}</div></div>`;
+          const remove = `<button class="secondary" data-catalog-action="edit" data-catalog-item="${id}">Editar</button><button class="danger" data-catalog-action="delete" data-catalog-item="${id}">Excluir</button>`;
+          return `<div class="catalog-row"><div class="catalog-thumb">${itemPreview(item)}</div><span><b>${escape(item.name)}</b><small>${item.kind === 'hat' ? 'Acessório' : 'Capa'} · ${item.price} ANTAGOIN$ · ${item.owners} ${item.owners === 1 ? 'dono' : 'donos'}</small></span><span class="catalog-state ${item.active ? 'on' : ''}">${item.active ? 'Na loja' : 'Fora da loja'}${item.featured ? '<small>★ Destaque</small>' : ''}</span><div class="catalog-actions"><button class="${item.mine ? 'secondary' : 'primary'}" data-catalog-action="take" data-catalog-item="${id}" data-mine="${item.mine ? 1 : 0}">${item.mine ? 'Devolver' : 'Pegar'}</button><button class="secondary" data-catalog-action="active" data-catalog-item="${id}" data-active="${item.active ? 1 : 0}">${item.active ? 'Tirar da loja' : 'Colocar na loja'}</button>${remove}</div></div>`;
         })
         .join('')
     : '<p class="admin-empty">Nenhum item cadastrado.</p>';
@@ -461,7 +515,19 @@ $('#admin-catalog').onclick = async (event) => {
   if (!button || button.disabled) return;
   const { catalogAction: action, catalogItem: item } = button.dataset;
   const name = adminCatalog.find((entry) => entry.id === item)?.name || item;
-  if (action === 'delete' && !confirm(`Excluir "${name}"? A capa sai da loja e do inventário de todos os jogadores.`))
+  if (action === 'edit') {
+    const entry = adminCatalog.find((entry) => entry.id === item);
+    if (!entry) return;
+    $('#catalog-edit-form').dataset.item = item;
+    $('#catalog-edit-name').value = entry.name;
+    $('#catalog-edit-price').value = entry.price;
+    $('#catalog-edit-active').checked = entry.active;
+    $('#catalog-edit-featured').checked = !!entry.featured;
+    $('#catalog-edit-error').textContent = '';
+    $('#catalog-edit-dialog').showModal();
+    return;
+  }
+  if (action === 'delete' && !confirm(`Excluir "${name}"? O item sai da loja e do inventário de todos os jogadores.`))
     return;
   button.disabled = true;
   try {
@@ -470,7 +536,7 @@ $('#admin-catalog').onclick = async (event) => {
       toast(button.dataset.mine === '1' ? 'Item removido do seu inventário.' : 'Item adicionado ao seu inventário.');
     } else if (action === 'delete') {
       adminCatalog = await api.admin.remove(item);
-      toast('Capa excluída.');
+      toast('Item excluído.');
     } else {
       adminCatalog = await api.admin.setActive(item, button.dataset.active !== '1');
       toast(
@@ -486,11 +552,38 @@ $('#admin-catalog').onclick = async (event) => {
     button.disabled = false;
   }
 };
+$('#catalog-edit-form').onsubmit = async (event) => {
+  event.preventDefault();
+  const fields = $('#catalog-edit-fields');
+  if (fields.disabled) return;
+  const item = event.currentTarget.dataset.item;
+  fields.disabled = true;
+  $('#catalog-edit-error').textContent = '';
+  try {
+    adminCatalog = await api.admin.update(item, {
+      name: $('#catalog-edit-name').value.trim(),
+      price: Number($('#catalog-edit-price').value),
+      active: $('#catalog-edit-active').checked,
+      featured: $('#catalog-edit-featured').checked,
+    });
+    renderCatalog();
+    renderAdminTarget();
+    $('#catalog-edit-dialog').close();
+    toast('Item atualizado.');
+    refreshFeatured();
+  } catch (error) {
+    $('#catalog-edit-error').textContent = error.message;
+  } finally {
+    fields.disabled = false;
+  }
+};
 $('#admin-tabs').onclick = (event) => {
   const button = event.target.closest('[data-admin-tab]');
   if (!button) return;
   $$('#admin-tabs [data-admin-tab]').forEach((b) => b.classList.toggle('active', b === button));
-  for (const tab of ['players', 'editor', 'catalog']) $(`#admin-${tab}`).hidden = tab !== button.dataset.adminTab;
+  for (const tab of ['players', 'editor', 'catalog', 'radio'])
+    $(`#admin-${tab}`).hidden = tab !== button.dataset.adminTab;
+  if (button.dataset.adminTab === 'radio') radio.admin();
   if (button.dataset.adminTab === 'catalog') refreshCatalog();
   if (button.dataset.adminTab === 'editor') drawCape();
 };
@@ -747,13 +840,7 @@ function renderCommunity() {
   $('#chat-empty').hidden = !!friend;
   $('#chat-head').hidden = $('#chat-form').hidden = !friend;
   if (friend) {
-    const call = calls.state();
-    const inCall = call.people?.some((person) => person.id === friend.id) || call.invited?.includes(friend.name);
-    const button =
-      call.role === 'guest' || inCall || !friend.online
-        ? ''
-        : `<button class="secondary" data-call="${friend.id}">${call.status === 'active' ? 'Chamar para a call' : 'Ligar'}</button>`;
-    $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>${button}`;
+    $('#chat-head').innerHTML = `${head(friend)}<span class="who"><b>${escape(friend.name)}</b></span>`;
   } else {
     conversation.clear();
     $('#messages').replaceChildren();
@@ -912,40 +999,7 @@ community.onNotify((notice) => {
   setTimeout(() => card.classList.add('leaving'), 5e3);
   setTimeout(() => card.remove(), 5.4e3);
 });
-function renderCall(state = calls.state()) {
-  const panel = $('#call-panel');
-  panel.hidden = !state.status;
-  if (state.status === 'incoming')
-    panel.innerHTML = `<span><b>${escape(state.hostName)}</b> está te chamando para uma call</span><button class="primary" data-call-action="accept">Atender</button><button class="danger" data-call-action="decline">Recusar</button>`;
-  else if (state.status === 'active') {
-    const names = state.people.filter((person) => person.id !== people.me?.id).map((person) => person.name);
-    const waiting = state.invited?.length ? ` · chamando ${state.invited.join(', ')}` : '';
-    panel.innerHTML = `<span><b>Em call</b>${escape(names.length ? ' com ' + names.join(', ') : '')}${escape(waiting)}</span><button class="secondary" data-call-action="mute">${state.muted ? 'Ativar microfone' : 'Mutar'}</button><button class="danger" data-call-action="end">Sair</button>`;
-  }
-  renderCommunity();
-}
-$('#call-panel').onclick = (event) => {
-  const action = event.target.closest('[data-call-action]')?.dataset.callAction;
-  if (action === 'accept') calls.accept();
-  else if (action === 'decline') calls.decline();
-  else if (action === 'mute') calls.mute();
-  else if (action === 'end') calls.end();
-};
-$('#chat-head').onclick = (event) => {
-  const id = event.target.closest('[data-call]')?.dataset.call;
-  const friend = people.friends.find((person) => person.id === id);
-  if (friend) calls.start(friend);
-};
-api.call.onCommand(({ action, id }) => {
-  const friend = people.friends.find((person) => person.id === id);
-  if (action === 'call' && friend) calls.start(friend);
-  else if (action === 'call-accept') calls.accept();
-  else if (action === 'call-decline') calls.decline();
-  else if (action === 'call-mute') calls.mute();
-  else if (action === 'call-leave') calls.end();
-});
 community.onEvent((event) => {
-  if (event.type === 'call') return calls.receive(event.payload);
   if (event.type !== 'message') return refreshSoon();
   const m = event.payload;
   const other = m.sender === people.me?.id ? m.recipient : m.sender;
@@ -980,14 +1034,15 @@ window.addEventListener('pagehide', () => {
     settings = settingsStore.value;
     account = data.account;
     renderProfile();
+    renderQuickSettings();
+    refreshFeatured();
     $('#version').textContent = data.version;
     checkUpdate();
-    renderBackground(settings.background);
     $('#memory').value = settings.memory;
     $('#memory-value').textContent = settings.memory + ' GB';
     $('#fullscreen').checked = settings.fullscreen;
-    $('#pack-toggle').checked = settings.pack;
-    $('#install-state').textContent = data.installed ? 'Forge · instalado' : 'Forge · será instalado ao jogar';
+    $('#game-version').value = settings.gameVersion;
+    renderVersion(settings.gameVersion, data.installed);
     renderOptifine(data.optifine);
     renderWallpaper(data.wallpaper).catch((error) => toast(error.message));
     $('#share-server').checked = settings.shareServer;
@@ -1005,3 +1060,19 @@ window.addEventListener('pagehide', () => {
     toast('Não foi possível carregar o launcher: ' + e.message);
   }
 })();
+
+function renderVersion(version, installed = false) {
+  const modern = version === 'latest-26';
+  $('#install-state').textContent = modern
+    ? 'Fabric · ' + (installed ? 'perfil separado' : 'será preparado ao jogar')
+    : 'Forge · Antagon · ' + (installed ? 'pronto para jogar' : 'instalação automática');
+  $('#optifine-row').hidden = modern;
+  $('#fabric-row').hidden = !modern;
+  renderHomeMods();
+}
+
+function renderHomeMods() {
+  const modern = settings?.gameVersion === 'latest-26';
+  $('#home-mods-name').textContent = modern ? 'Fabric + Sodium' : 'OptiFine';
+  $('#home-mods-state').textContent = modern ? 'Mods compatíveis' : optifineFile ? 'Instalado' : 'Configurar';
+}

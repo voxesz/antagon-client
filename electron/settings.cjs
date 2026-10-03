@@ -5,21 +5,20 @@ const DEFAULTS = {
   nickname: 'Player',
   memory: 3,
   fullscreen: false,
-  pack: true,
   shareServer: true,
-  background: 'scene',
   discordPresence: true,
   discordApplicationId: '1554534012670836746',
+  gameVersion: '1.8.9',
 };
 const NICKNAME = /^[A-Za-z0-9_]{3,16}$/;
 function validateSettings(input) {
   const settings = structuredClone(DEFAULTS);
   if (input?.mode === 'microsoft') settings.mode = 'microsoft';
+  if (['1.8.9', 'latest-26'].includes(input?.gameVersion)) settings.gameVersion = input.gameVersion;
   if (typeof input?.nickname === 'string' && NICKNAME.test(input.nickname)) settings.nickname = input.nickname;
   if (Number.isFinite(input?.memory)) settings.memory = Math.max(2, Math.min(8, Math.round(input.memory)));
-  for (const key of ['fullscreen', 'pack', 'shareServer', 'discordPresence'])
+  for (const key of ['fullscreen', 'shareServer', 'discordPresence'])
     if (typeof input?.[key] === 'boolean') settings[key] = input[key];
-  if (['scene', 'ascii'].includes(input?.background)) settings.background = input.background;
   if (typeof input?.discordApplicationId === 'string' && APPLICATION_ID.test(input.discordApplicationId.trim()))
     settings.discordApplicationId = input.discordApplicationId.trim();
   return settings;

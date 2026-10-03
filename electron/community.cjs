@@ -36,13 +36,17 @@ class Community {
   constructor(root, safeStorage, emit) {
     this.emit = emit;
     this.me = null;
+    this.messageIds = new Set();
     this.activity = { activity: 'launcher', server: null };
     this.db = createClient(SUPABASE_URL, SUPABASE_KEY, {
       global: {
         fetch: (url, init = {}) =>
           fetch(url, {
             ...init,
-            signal: AbortSignal.any([AbortSignal.timeout(15000), ...(init.signal ? [init.signal] : [])]),
+            signal: AbortSignal.any([
+              AbortSignal.timeout(String(url).includes('/storage/v1/object/radio-media/') ? 120000 : 15000),
+              ...(init.signal ? [init.signal] : []),
+            ]),
           }),
       },
       auth: {
@@ -104,31 +108,25 @@ class Community {
       .channel('community')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presence' }, changed('presence'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, changed('friendships'))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, changed('message'))
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `recipient=eq.${this.me.id}` },
-        (payload) => {
-          this.emit({ type: 'call', payload: payload.new });
-          this.db
-            .from('call_signals')
-            .delete()
-            .eq('id', payload.new.id)
-            .then(() => {});
-        },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) =>
+        this.deliverMessage(payload.new),
       )
       .subscribe();
-    this.db
-      .from('call_signals')
-      .delete()
-      .eq('recipient', this.me.id)
-      .then(() => {});
   }
 
   stop() {
     clearInterval(this.timer);
     if (this.channel) this.db.removeChannel(this.channel).catch(() => {});
     this.channel = null;
+  }
+
+  deliverMessage(message) {
+    if (message?.id == null) return;
+    const id = String(message.id);
+    if (this.messageIds.has(id)) return;
+    this.messageIds.add(id);
+    if (this.messageIds.size > 1000) this.messageIds.delete(this.messageIds.values().next().value);
+    this.emit({ type: 'message', payload: { ...message, id } });
   }
 
   async publish() {
@@ -209,10 +207,28 @@ class Community {
   }
 
   async adminDelete(item) {
-    if (!/^custom_[a-f0-9]{16}$/.test(item)) throw Error('Só capas criadas no editor podem ser excluídas.');
+    if (!/^[a-z0-9_]{1,40}$/.test(item)) throw Error('Item inválido.');
     const { error } = await this.db.rpc('admin_delete_item', { p_item: item });
     if (error) throw Error(error.message || 'Não foi possível excluir o item.');
-    await this.db.storage.from('cosmetics').remove([`${item}.png`]);
+    if (/^custom_[a-f0-9]{16}$/.test(item)) await this.db.storage.from('cosmetics').remove([`${item}.png`]);
+    return this.adminCatalog();
+  }
+
+  async adminUpdate(item, input) {
+    if (!/^[a-z0-9_]{1,40}$/.test(item)) throw Error('Item inválido.');
+    const name = String(input?.name || '').trim();
+    if (!name || name.length > 40) throw Error('Dê um nome de até 40 caracteres.');
+    if (!Number.isInteger(input?.price) || input.price < 0 || input.price > 100000) throw Error('Preço inválido.');
+    if (typeof input.active !== 'boolean') throw Error('Visibilidade inválida.');
+    if (typeof input.featured !== 'boolean') throw Error('Destaque inválido.');
+    const { error } = await this.db.rpc('admin_update_item', {
+      p_item: item,
+      p_name: name,
+      p_price: input.price,
+      p_active: input.active,
+      p_featured: input.featured,
+    });
+    if (error) throw Error(error.message || 'Não foi possível editar o item.');
     return this.adminCatalog();
   }
 
@@ -244,6 +260,12 @@ class Community {
     });
     if (error) throw Error(error.message || 'Não foi possível criar a capa.');
     return id;
+  }
+
+  async featured() {
+    const { data, error } = await this.db.rpc('featured_cosmetics');
+    if (error) throw Error('Não foi possível carregar os destaques.');
+    return data || [];
   }
 
   async store() {
@@ -278,24 +300,6 @@ class Community {
     const { error } = await this.db.rpc('equip_cosmetic', { p_item: item, p_kind: kind });
     if (error) throw Error('Não foi possível equipar o item.');
     return this.store();
-  }
-
-  /** Signals are queued so an offer always reaches the peer before its ICE candidates. */
-  callSignal(recipient, callId, kind, payload = {}) {
-    validateId(recipient);
-    validateId(callId);
-    const send = async () => {
-      const { error } = await this.db.from('call_signals').insert({ recipient, call_id: callId, kind, payload });
-      if (error) throw Error('Não foi possível falar com seu amigo. Vocês precisam ser amigos.');
-    };
-    const next = (this.signals || Promise.resolve()).then(send, send);
-    this.signals = next.catch(() => {});
-    return next;
-  }
-
-  async iceServers() {
-    const { data, error } = await this.db.functions.invoke('ice-servers');
-    return !error && Array.isArray(data?.iceServers) ? data.iceServers : [{ urls: 'stun:stun.l.google.com:19302' }];
   }
 
   async checkout(pack) {
@@ -417,6 +421,7 @@ class Community {
       .select('id, sender, recipient, body, created_at')
       .single();
     if (error) throw Error('Não foi possível enviar a mensagem.');
+    this.deliverMessage(data);
     return data;
   }
 }

@@ -14,6 +14,7 @@ execFileSync(
     out,
     path.join(root, 'mod-src/studio/antagon/Reflect.java'),
     path.join(root, 'mod-src/studio/antagon/MenuLayout.java'),
+    path.join(root, 'mod-src/studio/antagon/ModuleRegistry.java'),
     path.join(root, 'tests/java/studio/antagon/CoreTest.java'),
   ],
   { stdio: 'inherit' },

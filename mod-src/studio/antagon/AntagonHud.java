@@ -114,7 +114,7 @@ public class AntagonHud {
         radio.start();
         System.out.println(
                 "[ANTAGON] HUD ready — 0.1.0 / FPS CPS Keystrokes Coordinates Ping Clock NoHurtCam"
-                        + " / Right Shift menu");
+                        + " / Antagon mods");
     }
 
     private void load() {
@@ -283,9 +283,9 @@ public class AntagonHud {
                 }
             }
         if (!enabled("radio")) return;
-        if (code == keyOf("radio", "prev")) Spotify.previous();
+        if (code == keyOf("radio", "prev")) Radio.command("previous");
         else if (code == keyOf("radio", "pause")) radioToggle();
-        else if (code == keyOf("radio", "next")) Spotify.next();
+        else if (code == keyOf("radio", "next")) Radio.command("next");
     }
 
     @SubscribeEvent
@@ -548,6 +548,7 @@ public class AntagonHud {
         chatSettings();
         Hooks.hideScoreboard = enabled("scoreboard");
         Hooks.itemPhysics = enabled("itemphysics");
+        Hooks.heldItemScale = enabled("itemsize") ? percent("itemsize", "scale") : 1f;
         fullBright();
         if (enabled("hitdelay"))
             try {
@@ -765,57 +766,42 @@ public class AntagonHud {
     }
 
     private void radioPlay() {
-        Spotify.play(config.getProperty("radio.uri"));
+        try { requestLauncherView("radio"); } catch (IOException ignored) {}
     }
 
     private void radioToggle() {
-        if (radioState.equals("off") || radioState.equals("stopped")) radioPlay();
-        else Spotify.playPause();
+        Radio.command("toggle");
     }
 
     private void radioLoop() {
-        int off = 0;
         while (true) {
             try {
-                if (smokeConfig) {
-                    Thread.sleep(1000);
-                    continue;
-                }
-                if (enabled("radio")) {
-                    off = 0;
-                    String[] p = Spotify.status();
-                    if (p.length >= 7 && System.currentTimeMillis() - volumeSentAt > 2500)
-                        radioVolume = (int) Spotify.number(p[6]);
-                    if (p.length >= 6) {
-                        radioTitle = p[1];
-                        radioArtist = p[2];
-                        radioPos = Spotify.number(p[4]);
-                        radioDur = Spotify.number(p[5]) / 1000f;
-                        radioStamp = System.currentTimeMillis();
-                        radioState = p[0];
-                        if (!p[3].equals(radioArt)) {
-                            radioArt = p[3];
-                            loadArt(p[3]);
-                        }
-                    } else {
-                        radioState = p[0].isEmpty() ? "off" : p[0];
-                        radioTitle = "";
+                if (!smokeConfig) {
+                    Properties p = Radio.status();
+                    radioState = p.getProperty("state", "off");
+                    radioTitle = p.getProperty("title", "");
+                    String collection = p.getProperty("collection", "");
+                    radioArtist = p.getProperty("artist", "");
+                    if (p.getProperty("mode", "").equals("radio")) radioArtist = "AO VIVO · " + radioArtist;
+                    if (radioTitle.isEmpty()) radioArtist = collection;
+                    radioPos = Platform.number(p.getProperty("position", "0"));
+                    radioDur = Platform.number(p.getProperty("duration", "0"));
+                    radioStamp = System.currentTimeMillis();
+                    if (System.currentTimeMillis() - volumeSentAt > 1500)
+                        radioVolume = (int) Platform.number(p.getProperty("volume", "65"));
+                    String art = p.getProperty("art", "");
+                    if (!art.equals(radioArt)) {
+                        radioArt = art;
+                        loadArt(art);
                     }
-                } else if (++off == 2 && !radioState.equals("off")) {
-                    Spotify.pause(radioState.equals("playing"));
-                    radioState = "off";
-                    radioTitle = "";
                 }
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
+                Thread.sleep(500);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
                 return;
             } catch (Exception ignored) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+                try { Thread.sleep(1000); }
+                catch (InterruptedException interrupted) { return; }
             }
         }
     }
@@ -823,14 +809,11 @@ public class AntagonHud {
     private void loadArt(String url) {
         try {
             BufferedImage src =
-                    url.startsWith("https://")
-                            ? ImageIO.read(new URL(url))
-                            : Spotify.isArt(url) ? ImageIO.read(new File(url)) : null;
+                    Radio.isArt(url) ? ImageIO.read(new File(url)) : null;
             if (src == null) {
                 artPending = null;
                 return;
             }
-            if (src == null) return;
             BufferedImage img = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = img.createGraphics();
             g.setRenderingHint(
@@ -887,7 +870,7 @@ public class AntagonHud {
         if (flag("radio", "bar")) rect(0, 0, 2, h, RED);
         float tx = 8;
         if (art) {
-            if (artTexture != 0 && !radioTitle.isEmpty()) {
+            if (artTexture != 0 && !radioArt.isEmpty() && !radioTitle.isEmpty()) {
                 GL11.glEnable(GL11.GL_TEXTURE_2D);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, artTexture);
                 color(0xFFFFFFFF);
@@ -907,10 +890,7 @@ public class AntagonHud {
         String title = radioTitle, sub = radioArtist;
         if (title.isEmpty()) {
             title = "RÁDIO ANTAGON";
-            sub =
-                    config.getProperty("radio.uri") == null
-                            ? "Cole uma playlist no menu"
-                            : radioState.equals("off") ? "Spotify fechado" : "Parado";
+            sub = "Escolha sua frequência no menu";
         }
         text(fit(title, w - tx - 6), tx, 5, WHITE);
         text(fit(sub, w - tx - 6), tx, 17, GRAY);
@@ -1231,6 +1211,16 @@ public class AntagonHud {
             }
             if (field(mc, "field_71439_g", "thePlayer") == null) return;
             switch (++worldTicks) {
+                case 10:
+                    Object enteringPlayer = field(mc, "field_71439_g", "thePlayer");
+                    if (Cosmetics.cape(null, enteringPlayer) == null)
+                        throw new IllegalStateException("Capa pré-carregada ausente na entrada do mundo");
+                    Object enteringProfile = call(enteringPlayer, new String[] {"func_146103_bH", "getGameProfile"});
+                    String enteringId = call(enteringProfile, new String[] {"getId"}).toString().replace("-", "");
+                    if (!new String(Files.readAllBytes(new File("antagon-players.txt").toPath()), StandardCharsets.UTF_8).contains(enteringId))
+                        throw new IllegalStateException("Lista de jogadores atrasada na entrada do mundo");
+                    System.out.println("[ANTAGON TEST] Cosmetics and roster ready on world entry");
+                    break;
                 case 140:
                     setField(
                             field(mc, "field_71474_y", "gameSettings"),
@@ -1319,6 +1309,10 @@ public class AntagonHud {
                     break;
                 case 230:
                     shot("antagon-options.png");
+                    menu.page = "cps";
+                    break;
+                case 231:
+                    shot("antagon-cps-options.png");
                     break;
                 case 232:
                     if (menu != null) {
@@ -1762,12 +1756,6 @@ public class AntagonHud {
                                         + "\n"
                                         + "msg=0\t19:02\tbora um bedwars?\n"
                                         + "msg=1\t19:03\tbora! me chama no servidor\n"
-                                        + "call=active\t0\tAntagonTest\n"
-                                        + "callpeer=00000000-0000-4000-8000-000000000000"
-                                        + "\tAntagonTest\n"
-                                        + "callpeer="
-                                        + friend
-                                        + "\tAmigoTeste\n"
                                         + "balance=250\n"
                                         + "item=antagon_cape\tCapa Antagon\t100\t0\t0\t1\tcape\n"
                                         + "item=antagon_logo_cape\tCapa Logo Antagon\t100\t1\t0\t0"
@@ -1900,6 +1888,41 @@ public class AntagonHud {
                     shot("antagon-item-physics.png");
                     break;
                 case 700:
+                    {
+                        Object self = field(mc, "field_71439_g", "thePlayer");
+                        setF(self, PITCH, 0f);
+                        Object inventory = field(self, "field_71071_by", "inventory");
+                        Object[] items = (Object[]) field(inventory, "field_70462_a", "mainInventory");
+                        Object sword = Class.forName("net.minecraft.init.Items").getField("field_151048_u").get(null);
+                        items[0] = Class.forName("net.minecraft.item.ItemStack")
+                                .getConstructor(Class.forName("net.minecraft.item.Item"), int.class).newInstance(sword, 1);
+                        setField(inventory, 0, "field_70461_c", "currentItem");
+                        config.setProperty("itemsize", "true");
+                        config.setProperty("itemsize.scale", "50%");
+                        Hooks.heldItemTransforms = 0;
+                    }
+                    break;
+                case 720:
+                    if (Hooks.heldItemTransforms == 0 || Hooks.heldItemScale != .5f)
+                        throw new IllegalStateException("Item Size did not resize the held model");
+                    shot("antagon-item-size-small.png");
+                    config.setProperty("itemsize", "false");
+                    break;
+                case 725:
+                    Hooks.heldItemTransforms = 0;
+                    break;
+                case 735:
+                    if (Hooks.heldItemTransforms != 0 || Hooks.heldItemScale != 1f)
+                        throw new IllegalStateException("Disabled Item Size still changes models");
+                    shot("antagon-item-size-default.png");
+                    openMenu();
+                    menu.page = "itemsize";
+                    break;
+                case 745:
+                    shot("antagon-item-size-options.png");
+                    System.out.println("[ANTAGON TEST] Item Size renders the configured scale and restores vanilla when disabled");
+                    break;
+                case 750:
                     call(mc, new String[] {"func_71400_g", "shutdown"});
                     break;
             }
@@ -2203,9 +2226,7 @@ public class AntagonHud {
                 if (enabled("cps"))
                     panel(
                             "cps",
-                            left.size()
-                                    + (flag("cps", "right") ? " | " + right.size() : "")
-                                    + " CPS",
+                            ModuleRegistry.cpsText(left.size(), right.size(), opt("cps", "buttons"), flag("cps", "suffix")),
                             12,
                             36,
                             sw,
@@ -2492,7 +2513,7 @@ public class AntagonHud {
                     if (!text.isEmpty())
                         config.setProperty(property, text.substring(0, text.length() - 1));
                 } else if (paste)
-                    config.setProperty(property, chatText(text + Spotify.clipboard()));
+                    config.setProperty(property, chatText(text + Platform.clipboard()));
                 else if (c >= 32 && c != 127 && c != 167)
                     config.setProperty(property, chatText(text + c));
                 if (typing == null) save();
@@ -2770,14 +2791,8 @@ public class AntagonHud {
                 String v = opt(page, opts[k][0]);
                 rect(x0 + 8, ry, PW - 16, 22, 0xFF262626);
                 text(opts[k][1], x0 + 16, ry + 3, WHITE);
-                if (opts[k][0].equals("playlist")) {
-                    String uri = config.getProperty("radio.uri");
-                    text(
-                            uri == null ? "NENHUMA" : uri.split(":")[1].toUpperCase(),
-                            x0 + 150,
-                            ry + 3,
-                            GRAY);
-                    button("COLAR LINK", x0 + PW - 108, ry + 3, 92, 16, mx, my, true);
+                if (opts[k][0].equals("library")) {
+                    button("ABRIR RÁDIO", x0 + PW - 108, ry + 3, 92, 16, mx, my, true);
                 } else if (opts[k][0].equals("controls")) {
                     button("<<", x0 + PW - 108, ry + 3, 24, 16, mx, my, false);
                     button(
@@ -2830,7 +2845,7 @@ public class AntagonHud {
                             waiting);
                 } else if (opts[k][2].startsWith("range:")) {
                     float[] r = range(opts[k]);
-                    slider(ry, (Spotify.number(v.replace("%", "")) - r[0]) / (r[1] - r[0]));
+                    slider(ry, (Platform.number(v.replace("%", "")) - r[0]) / (r[1] - r[0]));
                     text(v, x0 + PW - 16 - width(v), ry + 3, WHITE);
                 } else if (opts[k][2].equals("slider")) {
                     int vol = radioVolume;
@@ -2930,29 +2945,8 @@ public class AntagonHud {
             volumeSentAt = System.currentTimeMillis();
             if (last || System.currentTimeMillis() - volumeSent > 150) {
                 volumeSent = System.currentTimeMillis();
-                Spotify.volume(v);
+                Radio.command("volume", Integer.toString(v));
             }
-        }
-
-        private void pastePlaylist() {
-            String link = Spotify.clipboard();
-            if (Spotify.jam(link) != null) {
-                notice = "ACEITE O CONVITE DA JAM NO SPOTIFY";
-                config.setProperty("radio", "true");
-                save();
-                Spotify.open(link);
-                return;
-            }
-            String uri = Spotify.uri(link);
-            if (uri == null) {
-                notice = "COPIE O LINK DE UMA PLAYLIST OU JAM DO SPOTIFY";
-                return;
-            }
-            notice = "";
-            config.setProperty("radio.uri", uri);
-            config.setProperty("radio", "true");
-            save();
-            radioPlay();
         }
 
         private void cycle(String mod, String[] o) {
@@ -3070,7 +3064,10 @@ public class AntagonHud {
                     }
                     config.setProperty(MODS[i], "" + !enabled(MODS[i]));
                     save();
-                    if (MODS[i].equals("radio") && enabled("radio")) radioPlay();
+                    if (MODS[i].equals("radio")) {
+                        if (enabled("radio")) radioPlay();
+                        else Radio.command("stop");
+                    }
                     return;
                 }
             } else {
@@ -3081,8 +3078,8 @@ public class AntagonHud {
                 String[][] opts = options(page);
                 for (int k = 0; k < opts.length; k++) {
                     float ry = top() + k * 26;
-                    if (opts[k][0].equals("playlist")) {
-                        if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16)) pastePlaylist();
+                    if (opts[k][0].equals("library")) {
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16)) radioPlay();
                         continue;
                     }
                     if (opts[k][2].equals("autotext")) {
@@ -3111,9 +3108,9 @@ public class AntagonHud {
                         continue;
                     }
                     if (opts[k][0].equals("controls")) {
-                        if (in(mx, my, x0 + PW - 108, ry + 3, 24, 16)) Spotify.previous();
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 24, 16)) Radio.command("previous");
                         else if (in(mx, my, x0 + PW - 82, ry + 3, 40, 16)) radioToggle();
-                        else if (in(mx, my, x0 + PW - 40, ry + 3, 24, 16)) Spotify.next();
+                        else if (in(mx, my, x0 + PW - 40, ry + 3, 24, 16)) Radio.command("next");
                         continue;
                     }
                     if (in(mx, my, x0 + PW - 108, ry, 92, 22)) {
@@ -3306,15 +3303,12 @@ public class AntagonHud {
         long lastRead = 0, updated = 0;
         boolean online = false;
         String me = "", notice = "", chat = null, typing = null, addText = "", chatText = "";
-        String callStatus = "", callHost = "";
-        boolean callMuted;
         int balance = -1, listScroll = 0, page = 0;
         final List<String[]> friends = new ArrayList<String[]>(),
                 incoming = new ArrayList<String[]>(),
                 outgoing = new ArrayList<String[]>(),
                 messages = new ArrayList<String[]>(),
-                items = new ArrayList<String[]>(),
-                callPeers = new ArrayList<String[]>();
+                items = new ArrayList<String[]>();
         final Map<String, float[]> hits = new LinkedHashMap<String, float[]>();
 
         Hub(GuiScreen parent, String tab) {
@@ -3351,8 +3345,6 @@ public class AntagonHud {
                 outgoing.clear();
                 messages.clear();
                 items.clear();
-                callPeers.clear();
-                callStatus = callHost = "";
                 String stateChat = null;
                 for (String line : lines) {
                     int eq = line.indexOf('=');
@@ -3371,11 +3363,6 @@ public class AntagonHud {
                     else if (key.equals("msg") && v.length >= 3) messages.add(v);
                     else if (key.equals("balance")) balance = Integer.parseInt(v[0]);
                     else if (key.equals("item") && v.length >= 7) items.add(v);
-                    else if (key.equals("call") && v.length >= 3) {
-                        callStatus = v[0];
-                        callMuted = v[1].equals("1");
-                        callHost = v[2];
-                    } else if (key.equals("callpeer") && v.length >= 2) callPeers.add(v);
                 }
                 if (chat != null && !chat.equals(stateChat)) messages.clear();
             } catch (Exception e) {
@@ -3501,7 +3488,7 @@ public class AntagonHud {
             for (String[] f : sorted) rows.add(new String[] {"f", f[0]});
             for (String[] p : outgoing) rows.add(new String[] {"out", p[0], p[1]});
             float y = top + 26, bottom = y0 + H - 24;
-            float listEnd = callStatus.isEmpty() ? bottom : bottom - 50;
+            float listEnd = bottom;
             int max = Math.max(0, rows.size() - 8);
             listScroll = Math.max(0, Math.min(listScroll, max));
             for (int i = listScroll; i < rows.size() && y < listEnd - 18; i++) {
@@ -3536,7 +3523,6 @@ public class AntagonHud {
                     y += 30;
                 }
             }
-            if (!callStatus.isEmpty()) drawCall(lx, listEnd - 4, lw, 50, mx, my);
             float cx = x0 + 192, cw = W - 202;
             rect(cx - 6, top, 1, bottom - top, 0xFF303035);
             String[] f = chat == null ? null : friend(chat);
@@ -3549,16 +3535,6 @@ public class AntagonHud {
             text(fit(activity(f), cw - 70), cx, top + 13, GRAY);
             if (f[3].equals("server") && !f[4].isEmpty())
                 button("join:" + f[4], "ENTRAR", cx + cw - 60, top, 60, 20, mx, my, true);
-            boolean inCall = false;
-            for (String[] p : callPeers) inCall |= p[0].equals(f[0]);
-            if (f[2].equals("1")
-                    && !inCall
-                    && !callStatus.equals("incoming")
-                    && callHost.equals(callStatus.isEmpty() ? "" : me)) {
-                String label = callStatus.isEmpty() ? "LIGAR" : "CHAMAR";
-                float bx = cx + cw - (f[3].equals("server") && !f[4].isEmpty() ? 126 : 60);
-                button("call:" + f[0], label, bx, top, 60, 20, mx, my, false);
-            }
             rect(cx, top + 28, cw, 1, 0xFF303035);
             List<String[]> lines = new ArrayList<String[]>();
             for (String[] m : messages)
@@ -3624,36 +3600,6 @@ public class AntagonHud {
                 }
             }
             image(texture, x, y, 40, 64, 1 / 64f, 1 / 32f, 11 / 64f, 17 / 32f);
-        }
-
-        void drawCall(float x, float y, float w, float h, int mx, int my) {
-            rect(x, y, w, h, 0xFF1C2A1E);
-            rect(x, y, 2, h, 0xFF7BD66A);
-            if (callStatus.equals("incoming")) {
-                text(fit(callHost + " TE CHAMANDO", w - 12), x + 8, y + 2, WHITE);
-                button("callaccept", "ATENDER", x + 8, y + 24, 76, 20, mx, my, true);
-                button("calldecline", "RECUSAR", x + 88, y + 24, 76, 20, mx, my, false);
-                return;
-            }
-            StringBuilder names = new StringBuilder();
-            for (String[] p : callPeers)
-                if (!p[1].equals(me)) names.append(names.length() == 0 ? "" : ", ").append(p[1]);
-            text(
-                    fit(names.length() == 0 ? "CHAMANDO..." : "CALL: " + names, w - 12),
-                    x + 8,
-                    y + 2,
-                    WHITE);
-            button(
-                    "callmute",
-                    callMuted ? "DESMUTAR" : "MUTAR",
-                    x + 8,
-                    y + 24,
-                    76,
-                    20,
-                    mx,
-                    my,
-                    false);
-            button("callleave", "SAIR", x + 88, y + 24, 76, 20, mx, my, true);
         }
 
         void drawStore(int mx, int my, boolean inventory) throws Exception {
@@ -3750,7 +3696,7 @@ public class AntagonHud {
                 else if (key == Keyboard.KEY_RETURN) submit();
                 else if (key == Keyboard.KEY_BACK) {
                     if (!value.isEmpty()) value = value.substring(0, value.length() - 1);
-                } else if (paste) value += Spotify.clipboard().replaceAll("[\\p{Cntrl}]", " ");
+                } else if (paste) value += Platform.clipboard().replaceAll("[\\p{Cntrl}]", " ");
                 else if (c >= 32 && c != 127 && c != 167) value += c;
                 if (value.length() > limit) value = value.substring(0, limit);
                 if (typing != null && typing.equals("add"))
@@ -3814,11 +3760,6 @@ public class AntagonHud {
             else if (hit.startsWith("page:")) page += Integer.parseInt(hit.substring(5));
             else if (hit.startsWith("coins:")) command("coins", hit.substring(6));
             else if (hit.startsWith("join:")) joinServer(hit.substring(5));
-            else if (hit.startsWith("call:")) command("call", hit.substring(5));
-            else if (hit.equals("callaccept")) command("call-accept");
-            else if (hit.equals("calldecline")) command("call-decline");
-            else if (hit.equals("callmute")) command("call-mute");
-            else if (hit.equals("callleave")) command("call-leave");
         }
     }
 

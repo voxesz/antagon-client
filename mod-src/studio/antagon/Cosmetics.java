@@ -29,6 +29,8 @@ public final class Cosmetics {
     private static final Map<Object, Object> OPTIFINE_ORIGINAL = new WeakHashMap<Object, Object>();
     private static final boolean OPTIFINE = hasOptifine();
     private static long lastSnapshot = -1, lastRoster = 0;
+    private static Object lastHandler;
+    private static String lastRosterText = null;
     private static final Map<String, Object> CAPE_TEXTURES = new HashMap<String, Object>();
     private static final Map<String, Long> CAPE_RETRY = new HashMap<String, Long>();
     private static final String TOKEN = "(client|admin|(cape|hat):[a-z0-9_]{1,40})";
@@ -56,10 +58,15 @@ public final class Cosmetics {
                     || System.currentTimeMillis() - SNAPSHOT.lastModified() > 120000)
                 EQUIPPED.clear();
             syncOptifineCapes(minecraft);
-            if (System.currentTimeMillis() - lastRoster < 5000) return;
-            lastRoster = System.currentTimeMillis();
             Object handler = call(minecraft, new String[] {"func_147114_u", "getNetHandler"});
-            if (handler == null) return;
+            if (handler == lastHandler && System.currentTimeMillis() - lastRoster < 250) return;
+            lastHandler = handler;
+            lastRoster = System.currentTimeMillis();
+            if (handler == null) {
+                NAMES.clear();
+                writeRoster("");
+                return;
+            }
             Collection<?> roster =
                     (Collection<?>)
                             call(handler, new String[] {"func_175106_d", "getPlayerInfoMap"});
@@ -74,9 +81,23 @@ public final class Cosmetics {
                 ids.add(id);
                 NAMES.put(name.toLowerCase(java.util.Locale.ROOT), id);
             }
-            Files.write(PLAYERS.toPath(), String.join("\n", ids).getBytes(StandardCharsets.UTF_8));
+            java.util.Collections.sort(ids);
+            writeRoster(String.join("\n", ids));
         } catch (Exception ignored) {
         }
+    }
+
+    private static void writeRoster(String text) throws Exception {
+        if (text.equals(lastRosterText) && PLAYERS.isFile()) return;
+        File temporary = new File("antagon-players.tmp");
+        Files.write(temporary.toPath(), text.getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(temporary.toPath(), PLAYERS.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            Files.move(temporary.toPath(), PLAYERS.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        lastRosterText = text;
     }
 
     public static Object cape(Object vanilla, Object player) {
@@ -129,7 +150,7 @@ public final class Cosmetics {
                     || image.getWidth() != image.getHeight() * 2
                     || image.getWidth() % 64 != 0
                     || image.getWidth() > 2048) {
-                CAPE_RETRY.put(item, System.currentTimeMillis() + 5000);
+                CAPE_RETRY.put(item, System.currentTimeMillis() + 250);
                 return null;
             }
             Object texture =
@@ -418,9 +439,7 @@ public final class Cosmetics {
     static void renderHat(Object renderer, Object player, float scale) {
         try {
             if (!"antagon_crown".equals(token(equippedOf(player), "hat:"))) return;
-            if ((Boolean) call(player, new String[] {"func_82150_aj", "isInvisible"})
-                    || call(player, new String[] {"func_82169_q", "getCurrentArmor"}, 3) != null)
-                return;
+            if ((Boolean) call(player, new String[] {"func_82150_aj", "isInvisible"})) return;
             if (crownGold == null) {
                 Object owner = Class.forName("net.minecraft.client.model.ModelBiped").newInstance();
                 crownGold = boxes(owner, 0, 0, CROWN_GOLD);
@@ -444,8 +463,13 @@ public final class Cosmetics {
                         call(minecraft(), new String[] {"func_110434_K", "getTextureManager"}),
                         new String[] {"func_110577_a", "bindTexture"},
                         crownTexture);
-                call(crownGold, new String[] {"func_78785_a", "render"}, scale);
-                call(crownGems, new String[] {"func_78785_a", "render"}, scale);
+                invoke(gl, null, new String[] {"func_179141_d", "disableDepth"});
+                try {
+                    call(crownGold, new String[] {"func_78785_a", "render"}, scale);
+                    call(crownGems, new String[] {"func_78785_a", "render"}, scale);
+                } finally {
+                    invoke(gl, null, new String[] {"func_179126_j", "enableDepth"});
+                }
             } finally {
                 invoke(gl, null, new String[] {"func_179121_F", "popMatrix"});
             }

@@ -21,7 +21,10 @@ const { DEFAULTS } = require('../electron/settings.cjs');
   try {
     await page.waitForFunction(() => document.querySelector('#version').textContent.length > 0);
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(() => document.querySelector('#map').dataset.animating === 'true');
+    await page.waitForFunction(() => {
+      const image = document.querySelector('#home-art');
+      return image.complete && image.naturalWidth > 0;
+    });
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'friends'),
     );
@@ -35,29 +38,18 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(await page.locator('#store-content').isVisible(), false);
     assert.equal(await page.locator('.wallet img').evaluate((img) => img.complete && img.naturalWidth > 0), true);
     await page.click('[data-view="play"]');
+    await page.waitForFunction(() => !document.querySelector('#featured-items').textContent.includes('Carregando'));
     await page.screenshot({ path: path.join(root, 'docs/launcher.png') });
-    await page.click('#background-switch');
-    await page.waitForFunction(
-      () =>
-        document.querySelector('#ascii').dataset.animating === 'true' &&
-        document.querySelector('#map').dataset.animating === 'false',
-    );
-    await page.click('[data-view="settings"]');
-    await page.waitForFunction(() =>
-      ['map', 'ascii'].every((id) => document.getElementById(id).dataset.animating === 'false'),
-    );
+    await page.click('#home-settings');
     await page.locator('#fullscreen').check();
     await page.evaluate(() => {
       const memory = document.querySelector('#memory');
       memory.value = '5';
       memory.dispatchEvent(new Event('change'));
-      const pack = document.querySelector('#pack-toggle');
-      pack.checked = false;
-      pack.dispatchEvent(new Event('change'));
     });
     await page.waitForFunction(async () => {
       const { settings } = await window.antagon.init();
-      return settings.memory === 5 && settings.pack === false && settings.fullscreen;
+      return settings.memory === 5 && settings.fullscreen;
     });
     await page.screenshot({ path: path.join(root, 'docs/settings.png') });
     await page.click('#profile-open');
@@ -68,20 +60,22 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.click('#save-nick');
     await page.waitForFunction(() => document.querySelector('#profile-name').textContent === 'Antagon_Test');
     await page.click('[data-view="play"]');
-    await page.waitForFunction(() => document.querySelector('#ascii').dataset.animating === 'true');
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.waitForFunction(() => document.querySelector('#ascii').dataset.animating === 'false');
-    await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.waitForFunction(() => document.querySelector('#ascii').dataset.animating === 'true');
-    await page.evaluate(() => {
-      document.body.dataset.phase = 'running';
-    });
-    await page.waitForFunction(() => document.querySelector('#ascii').dataset.animating === 'false');
-    await page.evaluate(() => {
-      document.body.dataset.phase = 'idle';
-    });
-    await page.click('#background-switch');
-    await page.waitForFunction(() => document.querySelector('#map').dataset.animating === 'true');
+    assert.equal(await page.locator('#home-memory').inputValue(), '5');
+    assert.equal(await page.locator('#home-fullscreen').isChecked(), true);
+    assert.equal(await page.locator('#home-account-name').textContent(), 'Antagon_Test');
+    await page.selectOption('#home-memory', '4');
+    await page.uncheck('#home-fullscreen');
+    await page.waitForFunction(async () => (await window.antagon.init()).settings.memory === 4);
+    await page.selectOption('#game-version', 'latest-26');
+    await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'Fabric + Sodium');
+    await page.click('#home-mods');
+    assert.equal(await page.locator('#fabric-row').isVisible(), true);
+    assert.equal(await page.locator('#optifine-row').isVisible(), false);
+    assert.equal(await page.locator('#memory').inputValue(), '4');
+    assert.equal(await page.locator('#fullscreen').isChecked(), false);
+    await page.click('[data-view="play"]');
+    await page.selectOption('#game-version', '1.8.9');
+    await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'OptiFine');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1040, 720));
     await page.click('[data-view="settings"]');
     await page.locator('#discord-presence').scrollIntoViewIfNeeded();
@@ -89,8 +83,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(await page.locator('#discord-state').textContent(), 'Desativado');
     const state = await page.evaluate(() => window.antagon.init());
     assert.equal(state.settings.nickname, 'Antagon_Test');
-    assert.equal(state.settings.memory, 5);
-    assert.equal(state.settings.pack, false);
+    assert.equal(state.settings.memory, 4);
     await app.evaluate(({ ipcMain }) => {
       for (const channel of [
         'community:state',
@@ -172,7 +165,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
 
     await page.click('[data-admin-tab="catalog"]');
     await page.waitForFunction(() => document.querySelectorAll('#admin-catalog .catalog-row').length === 4);
-    assert.equal(await page.locator('[data-catalog-action="delete"]').count(), 1);
+    assert.equal(await page.locator('[data-catalog-action="delete"]').count(), 4);
     assert.equal(await page.locator('[data-catalog-action="take"][data-mine="1"]').count(), 1);
     assert.match(await page.locator('#admin-catalog').textContent(), /Fora da loja/);
     await page.waitForFunction(() => [...document.querySelectorAll('#admin-catalog img')].every((i) => i.complete));
@@ -247,9 +240,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(root, 'build/notice-preview.png') });
     assert.equal(errors.length, 0, errors.join('\n'));
-    console.log(
-      'UI OK: loja, admin, navegação, animações suspensas, movimento reduzido, configurações rápidas, perfil e Discord.',
-    );
+    console.log('UI OK: home, loja, admin, navegação, versões, configurações rápidas, perfil e Discord.');
   } finally {
     await app.close();
     await fs.rm(profile, { recursive: true, force: true });

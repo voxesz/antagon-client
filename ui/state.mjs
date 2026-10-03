@@ -28,7 +28,11 @@ export function createConversation() {
   let messages = new Map();
   const belongs = (message) => message.sender === selected || message.recipient === selected;
   const values = () =>
-    [...messages.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    [...messages.values()].sort(
+      (a, b) =>
+        a.created_at.localeCompare(b.created_at) ||
+        String(a.id).localeCompare(String(b.id), undefined, { numeric: true }),
+    );
   return {
     get selected() {
       return selected;
@@ -53,15 +57,15 @@ export function createConversation() {
       try {
         const history = await fetchMessages(id);
         if (request !== revision) return false;
-        for (const message of history) if (belongs(message)) messages.set(message.id, message);
+        for (const message of history) if (belongs(message)) messages.set(String(message.id), message);
         return true;
       } finally {
         if (request === revision) loading = false;
       }
     },
     receive(message) {
-      if (!selected || !belongs(message) || messages.has(message.id)) return false;
-      messages.set(message.id, message);
+      if (!selected || !belongs(message) || message.id == null || messages.has(String(message.id))) return false;
+      messages.set(String(message.id), message);
       return true;
     },
   };

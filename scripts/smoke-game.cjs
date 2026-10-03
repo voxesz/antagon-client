@@ -20,6 +20,7 @@ const screenshots = [
   'antagon-menu-bottom.png',
   'antagon-menu-pvp.png',
   'antagon-options.png',
+  'antagon-cps-options.png',
   'antagon-edit.png',
   'antagon-scoreboard-clean.png',
   'antagon-fullbright.png',
@@ -30,6 +31,9 @@ const screenshots = [
   'antagon-crown.png',
   'antagon-notice.png',
   'antagon-item-physics.png',
+  'antagon-item-size-small.png',
+  'antagon-item-size-default.png',
+  'antagon-item-size-options.png',
 ];
 
 async function main() {
@@ -59,10 +63,13 @@ async function main() {
   await runtime.launch({ ...DEFAULTS, discordPresence: false }, account, {
     smoke: true,
     admin: process.env.ANTAGON_TEST_ADMIN === '1',
+    beforeSpawn: async () =>
+      fs.writeFile(
+        path.join(root, 'minecraft/antagon-cosmetics.properties'),
+        `${account.id}=client,cape:antagon_cape,hat:antagon_crown,admin\n`,
+      ),
     ...size,
   });
-  if (withOptifine)
-    await fs.writeFile(path.join(root, 'minecraft/antagon-cosmetics.properties'), `${account.id}=antagon_cape\n`);
   const child = runtime.child;
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -92,7 +99,13 @@ async function main() {
       throw Error('A capa Antagon não foi aplicada na renderização do jogador.');
     if (!logfile.includes('[ANTAGON] Menu icons rendered'))
       throw Error('Os ícones Antagon não apareceram nos botões do jogo.');
+    if (!logfile.includes('[ANTAGON] Item Size patch applied'))
+      throw Error('O Item Size não foi instalado no renderizador.');
+    if (!logfile.includes('[ANTAGON TEST] Item Size renders the configured scale'))
+      throw Error('O Item Size não passou na verificação dentro do jogo.');
     if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
+    if (!logfile.includes('[ANTAGON TEST] Cosmetics and roster ready on world entry'))
+      throw Error('Cosméticos não ficaram prontos na entrada do mundo.');
     if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
       throw Error('O botão da loja não abriu a loja dentro do jogo.');
     for (const name of screenshots) {

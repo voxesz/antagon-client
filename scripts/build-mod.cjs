@@ -37,7 +37,7 @@ const MOD_INFO = [
     name: 'Antagon Client',
     version: '0.1.0',
     mcversion: '1.8.9',
-    description: 'PvP HUD and Right Shift menu for Antagon Client.',
+    description: 'Customizable PvP mods and cosmetics for Antagon Client.',
     authorList: ['Antagon Studio'],
     clientSideOnly: true,
   },

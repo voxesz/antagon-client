@@ -14,6 +14,8 @@ public class AntagonTransformer implements IClassTransformer {
             return patch(bytes, "func_177092_a", AntagonTransformer::hitColor, "Hit Color");
         if ("net.minecraft.client.renderer.entity.RenderEntityItem".equals(transformedName))
             return patch(bytes, "func_177077_a", AntagonTransformer::itemPhysics, "Item physics");
+        if ("net.minecraft.client.renderer.ItemRenderer".equals(transformedName))
+            return patch(bytes, "func_78440_a", AntagonTransformer::itemSize, "Item Size");
         if ("net.minecraft.client.gui.GuiPlayerTabOverlay".equals(transformedName))
             return patch(bytes, "func_175245_a", AntagonTransformer::tabIcon, "Tab icon");
         if ("net.minecraft.client.gui.GuiIngame".equals(transformedName))
@@ -104,6 +106,22 @@ public class AntagonTransformer implements IClassTransformer {
         head.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
         m.instructions.insert(head);
         return true;
+    }
+
+    private static boolean itemSize(MethodNode m) {
+        boolean changed = false;
+        for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (!(insn instanceof MethodInsnNode)) continue;
+            MethodInsnNode call = (MethodInsnNode) insn;
+            // The model draw is separate from maps and the empty arm. Apply after the
+            // equip/swing/eating/bow/block transforms; the existing pop restores the matrix.
+            if (!call.owner.equals("net/minecraft/client/renderer/ItemRenderer")
+                    || !call.name.equals("func_178099_a")) continue;
+            m.instructions.insertBefore(insn, new MethodInsnNode(Opcodes.INVOKESTATIC,
+                    "studio/antagon/Hooks", "scaleHeldItem", "()V", false));
+            changed = true;
+        }
+        return changed;
     }
 
     private static boolean tabIcon(MethodNode m) {

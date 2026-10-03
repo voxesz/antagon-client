@@ -77,3 +77,29 @@ test('community sign out clears only the local session after a presence failure'
   assert.equal(scope, 'local');
   assert.equal(stopped, true);
 });
+
+test('send acknowledgements and repeated realtime events emit one notification per message ID', () => {
+  const events = [];
+  const context = { messageIds: new Set(), emit: (event) => events.push(event) };
+  for (const id of [41, '41', 42, '42'])
+    Community.prototype.deliverMessage.call(context, { id, sender: 'a', recipient: 'b', body: 'same text' });
+  assert.deepEqual(
+    events.map((e) => e.payload.id),
+    ['41', '42'],
+  );
+});
+
+test('built-in cosmetics can be deleted without trying to delete a storage texture', async () => {
+  let deleted;
+  const context = {
+    db: {
+      rpc: async (name, args) => {
+        deleted = [name, args.p_item];
+        return {};
+      },
+    },
+    adminCatalog: async () => [],
+  };
+  await Community.prototype.adminDelete.call(context, 'antagon_crown');
+  assert.deepEqual(deleted, ['admin_delete_item', 'antagon_crown']);
+});

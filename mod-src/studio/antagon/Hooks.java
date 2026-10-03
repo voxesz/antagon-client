@@ -10,6 +10,19 @@ public final class Hooks {
     }
 
     public static volatile boolean itemPhysics = false;
+    public static volatile float heldItemScale = 1f;
+    public static long heldItemTransforms = 0;
+
+    /** Called only before drawing a held model in first person, inside Minecraft's matrix scope. */
+    public static void scaleHeldItem() {
+        float scale = heldItemScale;
+        if (Float.isNaN(scale) || Float.isInfinite(scale)) scale = 1f;
+        scale = Math.max(.25f, Math.min(1.5f, scale));
+        if (scale != 1f) {
+            org.lwjgl.opengl.GL11.glScalef(scale, scale, scale);
+            heldItemTransforms++;
+        }
+    }
 
     /**
      * Replaces RenderEntityItem's bob-and-spin transform: items rest on the ground with a fixed

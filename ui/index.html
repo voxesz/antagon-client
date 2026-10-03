@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc-heads.net https://pnlemlqvuqftantunwcw.supabase.co; font-src 'self'; connect-src 'none';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc-heads.net https://pnlemlqvuqftantunwcw.supabase.co; media-src 'self' blob: https://pnlemlqvuqftantunwcw.supabase.co; font-src 'self'; connect-src 'none';"
     />
     <title>Antagon Client</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="radio.css" />
   </head>
   <body>
     <header class="topbar">
@@ -22,7 +23,7 @@
       <nav>
         <button class="tab active" data-view="play">Jogar</button
         ><button class="tab" data-view="friends">Amigos<span class="badge" id="friends-badge" hidden></span></button
-        ><button class="tab" data-view="store">Loja</button
+        ><button class="tab" data-view="store">Loja</button><button class="tab" data-view="radio">Rádio</button
         ><button class="tab" data-view="admin" id="admin-tab" hidden>Admin</button
         ><button class="tab" data-view="settings">Configurações</button>
       </nav>
@@ -36,18 +37,92 @@
 
     <main>
       <section id="view-play" class="view active">
-        <canvas id="map" aria-hidden="true"></canvas><canvas id="ascii" aria-hidden="true"></canvas>
-        <div class="shade"></div>
-        <button class="background-switch" id="background-switch">Fundo: Paisagem</button>
-        <div class="play-panel">
-          <div class="version"><b>Minecraft 1.8.9</b><small id="install-state">Forge</small></div>
-          <div class="status">
-            <span id="launch-status">Pronto</span>
-            <div id="progress-track"><i id="progress-bar"></i></div>
+        <div class="home">
+          <div class="home-heading">
+            <div>
+              <span class="eyebrow">ANTAGON CLIENT</span>
+              <h1>Seu próximo mundo.</h1>
+            </div>
+            <span class="home-edition">MINECRAFT JAVA EDITION</span>
           </div>
-          <button class="play" id="launch">JOGAR</button>
+          <div class="home-hero">
+            <div class="home-artwork">
+              <img id="home-art" src="../assets/home-castle.png" alt="Castelo gótico sob a montanha-caveira" />
+              <div class="home-art-caption">
+                <span class="hero-mark"><img src="../assets/g-light.svg" alt="" />PRONTO PARA A PRÓXIMA PARTIDA</span>
+                <h2>Entre no jogo.</h2>
+                <p>O seu Minecraft. Do seu jeito.</p>
+              </div>
+            </div>
+            <aside class="launch-settings" aria-label="Configurações de jogo">
+              <div class="launch-heading">
+                <h2>Configurações de jogo</h2>
+                <button
+                  id="home-settings"
+                  class="icon-button"
+                  aria-label="Abrir todas as configurações"
+                  title="Todas as configurações"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6" /></svg>
+                </button>
+              </div>
+              <label class="launch-field" for="game-version"
+                >Versão do Minecraft<select id="game-version">
+                  <option value="1.8.9">1.8.9 · Forge</option>
+                  <option value="latest-26">Mais recente · 26.x · Fabric</option></select
+                ><small id="install-state">Forge · Antagon</small></label
+              >
+              <div class="launch-field">
+                <span>Conta</span
+                ><button id="home-account" class="home-account">
+                  <span id="home-account-name">Player</span><small id="home-account-mode">Offline</small
+                  ><span aria-hidden="true">⌄</span>
+                </button>
+              </div>
+              <div class="launch-options">
+                <label for="home-memory"
+                  >Memória<select id="home-memory">
+                    <option value="2">2 GB</option>
+                    <option value="3">3 GB</option>
+                    <option value="4">4 GB</option>
+                    <option value="5">5 GB</option>
+                    <option value="6">6 GB</option>
+                    <option value="7">7 GB</option>
+                    <option value="8">8 GB</option>
+                  </select></label
+                >
+                <div class="home-fullscreen">
+                  <label for="home-fullscreen">Tela cheia</label
+                  ><label class="switch"><input id="home-fullscreen" type="checkbox" /><span></span></label>
+                </div>
+              </div>
+              <button id="home-mods" class="home-mods">
+                <span id="home-mods-name">OptiFine</span><span id="home-mods-state">Configurar</span
+                ><span aria-hidden="true">↗</span>
+              </button>
+              <div class="launch-footer">
+                <div class="status" role="status">
+                  <span id="launch-status">Pronto</span>
+                  <div id="progress-track"><i id="progress-bar"></i></div>
+                </div>
+                <button class="play" id="launch">JOGAR</button>
+              </div>
+            </aside>
+          </div>
+          <section class="home-featured" aria-labelledby="featured-title">
+            <div class="featured-heading">
+              <div>
+                <span class="eyebrow">DO SEU JEITO</span>
+                <h2 id="featured-title">Destaques da loja</h2>
+              </div>
+              <button id="home-store" class="text-button">Explorar loja <span aria-hidden="true">↗</span></button>
+            </div>
+            <div id="featured-items" class="featured-items" aria-live="polite">
+              <p class="featured-empty">Carregando destaques…</p>
+            </div>
+          </section>
+          <footer class="home-footer"><span>SEU JOGO. SUA IDENTIDADE.</span><span>ANTAGON STUDIO</span></footer>
         </div>
-        <p class="hint">Mods e HUD: aperte <kbd>Shift direito</kbd> dentro do jogo · <kbd>F8</kbd> oculta o HUD</p>
       </section>
 
       <section id="view-friends" class="view">
@@ -128,6 +203,8 @@
         </div>
       </section>
 
+      <section id="view-radio" class="view"></section>
+
       <section id="view-admin" class="view">
         <div class="admin-panel">
           <div class="admin-heading">
@@ -136,7 +213,8 @@
           </div>
           <div class="segmented sub-tabs" id="admin-tabs">
             <button class="active" data-admin-tab="players">Jogadores</button
-            ><button data-admin-tab="editor">Criar capa</button><button data-admin-tab="catalog">Itens</button>
+            ><button data-admin-tab="editor">Criar capa</button><button data-admin-tab="catalog">Itens</button
+            ><button data-admin-tab="radio">Rádio</button>
           </div>
           <div id="admin-players">
             <p>Busque um usuário registrado pelo nick do Minecraft para gerenciar acesso, ANTAGOIN$ e cosméticos.</p>
@@ -237,6 +315,7 @@
             </div>
           </div>
           <div id="admin-catalog" class="admin-catalog" hidden></div>
+          <div id="admin-radio" hidden></div>
         </div>
       </section>
 
@@ -255,11 +334,7 @@
             <label for="fullscreen">Tela cheia</label
             ><label class="switch"><input id="fullscreen" type="checkbox" /><span></span></label>
           </div>
-          <div class="row">
-            <label for="pack-toggle">Antagon Pack</label
-            ><label class="switch"><input id="pack-toggle" type="checkbox" /><span></span></label>
-          </div>
-          <div class="row">
+          <div class="row" id="optifine-row">
             <span>OptiFine<small id="optifine-state">Não instalado</small></span>
             <div class="control">
               <button class="secondary" id="optifine-site">Baixar</button
@@ -267,8 +342,15 @@
               ><button class="secondary" id="optifine-remove" hidden>Remover</button>
             </div>
           </div>
+          <div class="row" id="fabric-row" hidden>
+            <span
+              >Mods para 26.x<small
+                >Fabric · Sodium e mods compatíveis · Antagon HUD continua no perfil 1.8.9</small
+              ></span
+            >
+          </div>
           <div class="row">
-            <span>Plano de fundo<small id="wallpaper-state">Padrão</small></span>
+            <span>Imagem da tela inicial<small id="wallpaper-state">Padrão</small></span>
             <div class="control">
               <button class="secondary" id="wallpaper-pick">Escolher imagem</button
               ><button class="secondary" id="wallpaper-reset" hidden>Usar padrão</button>
@@ -325,6 +407,28 @@
       </div>
       <p id="account-error" class="error" role="alert"></p>
     </dialog>
+    <dialog id="catalog-edit-dialog">
+      <div class="dialog-head">
+        <h2>Editar item</h2>
+        <button class="close" data-close="catalog-edit-dialog" aria-label="Fechar">×</button>
+      </div>
+      <form id="catalog-edit-form">
+        <fieldset id="catalog-edit-fields">
+          <label for="catalog-edit-name">Nome</label><input id="catalog-edit-name" required maxlength="40" />
+          <label for="catalog-edit-price">Preço em ANTAGOIN$</label
+          ><input id="catalog-edit-price" type="number" min="0" max="100000" step="1" required />
+          <label class="catalog-edit-visibility"
+            ><input id="catalog-edit-active" type="checkbox" />Disponível na loja</label
+          >
+          <label class="catalog-edit-visibility"
+            ><input id="catalog-edit-featured" type="checkbox" />Destacar na tela inicial</label
+          >
+          <small class="muted">O destaque aparece enquanto o item estiver disponível na loja.</small>
+          <p id="catalog-edit-error" class="error" role="alert"></p>
+          <button class="primary" type="submit">Salvar alterações</button>
+        </fieldset>
+      </form>
+    </dialog>
     <dialog id="logs-dialog" class="wide">
       <div class="dialog-head">
         <h2>Log</h2>
@@ -334,8 +438,6 @@
     </dialog>
     <div id="toast" role="status"></div>
     <div id="notices" role="status" aria-live="polite"></div>
-    <div id="call-panel" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="ascii.js"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>

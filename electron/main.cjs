@@ -1,13 +1,4 @@
-const {
-  app,
-  BrowserWindow,
-  ipcMain,
-  safeStorage,
-  shell,
-  dialog,
-  Notification,
-  systemPreferences,
-} = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, shell, dialog, Notification, nativeImage } = require('electron');
 const { unzipSync } = require('fflate');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -20,9 +11,10 @@ const updater = require('./updater.cjs');
 const { Community, cosmeticUrl, isCapeTexture } = require('./community.cjs');
 const { DiscordPresence } = require('./discord.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
+const { RadioService } = require('./radio.cjs');
+const { RadioBridge } = require('./radio-bridge.cjs');
+const { CosmeticsBridge } = require('./cosmetics-bridge.cjs');
 app.setName('Antagon Client');
-// Call audio must play when a friend joins while the launcher is in the background.
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const root = process.env.ANTAGON_TEST_ROOT || path.join(app.getPath('appData'), 'Antagon Client');
 app.setPath('userData', root);
 const ui = path.resolve(__dirname, '../ui/index.html');
@@ -106,7 +98,7 @@ const startedAt = Date.now();
 let activityReading = false;
 let community;
 let communityReady, connectCommunity;
-let cosmeticsReading = false;
+let cosmeticsBridge;
 let gameActionReading = false;
 // Friend notifications: diffed in the main process so they reach the launcher, the game and the OS.
 const notifier = { me: null, people: null, busy: false, timer: null, seq: 0 };
@@ -150,10 +142,6 @@ function communityEvent(event) {
     clearTimeout(notifier.timer);
     notifier.timer = setTimeout(checkNotifications, 1500);
   }
-  if (event.type === 'call' && event.payload?.kind === 'invite') {
-    const host = notifier.people?.friends.find((friend) => friend.id === event.payload.sender);
-    if (host) notify('call', host, 'está te chamando para uma call');
-  }
   if (event.type === 'message' && event.payload?.recipient === community?.me?.id) {
     const sender = notifier.people?.friends.find((friend) => friend.id === event.payload.sender);
     if (sender) notify('message', sender, String(event.payload.body || '').slice(0, 120));
@@ -161,7 +149,8 @@ function communityEvent(event) {
   if (
     event.type === 'message' &&
     gameUi.chat &&
-    [event.payload?.sender, event.payload?.recipient].includes(gameUi.chat)
+    [event.payload?.sender, event.payload?.recipient].includes(gameUi.chat) &&
+    !gameUi.messages.some((message) => String(message.id) === String(event.payload.id))
   )
     gameUi.messages.push(event.payload);
   gameUi.dirty = true;
@@ -171,7 +160,6 @@ const gameUi = {
   messages: [],
   people: null,
   store: null,
-  call: null,
   notice: '',
   dirty: true,
   busy: false,
@@ -197,11 +185,10 @@ async function gameUiCommand(line) {
     if (item) gameUi.store = await community.equip(item.id, item.kind);
   } else if (action === 'unequip' && ['cape', 'hat'].includes(a)) gameUi.store = await community.equip(null, a);
   else if (action === 'coins') await shell.openExternal(await community.checkout(a));
-  else if (/^call(-accept|-decline|-mute|-leave)?$/.test(action) && win && !win.isDestroyed())
-    win.webContents.send('call:command', { action, id: UUID.test(a) ? a : null });
   else if (action === 'admin')
     return fs.promises.writeFile(path.join(root, 'minecraft/antagon-ui-request.txt'), 'admin');
   gameUi.peopleAt = 0;
+  if (action === 'equip' || action === 'unequip') await gameCosmetics(true);
 }
 async function gameUiSync() {
   if (gameUi.busy || !runtime.child) return;
@@ -239,11 +226,6 @@ async function gameUiSync() {
           const time = new Date(m.created_at).toTimeString().slice(0, 5);
           lines.push(`msg=${m.sender === community.me.id ? 1 : 0}\t${time}\t${clean(m.body)}`);
         }
-      }
-      const call = gameUi.call;
-      if (call?.status) {
-        lines.push(`call=${[call.status, call.muted ? 1 : 0, call.hostName || ''].map(clean).join('\t')}`);
-        for (const person of call.people || []) lines.push(`callpeer=${clean(person.id)}\t${clean(person.name)}`);
       }
       if (gameUi.store) {
         const { balance, catalog, owned, equipped } = gameUi.store;
@@ -285,7 +267,6 @@ async function gameActivity() {
     activityReading = false;
   }
 }
-const COSMETIC_ID = /^[a-z0-9_]{1,40}$/;
 /** Custom capes live in Supabase Storage; the game reads them from antagon-capes/<id>.png. */
 async function cosmeticImage(id) {
   const file = path.join(root, 'minecraft/antagon-capes', `${id}.png`);
@@ -296,35 +277,12 @@ async function cosmeticImage(id) {
   await fs.promises.mkdir(path.dirname(file), { recursive: true });
   atomic(file, png);
 }
-async function gameCosmetics() {
-  if (cosmeticsReading || !runtime.child || !community?.me) return;
-  cosmeticsReading = true;
+async function gameCosmetics(force = false) {
+  if (!runtime.child || !community?.me) return;
   try {
-    const game = path.join(root, 'minecraft');
-    const roster = await fs.promises.readFile(path.join(game, 'antagon-players.txt'), 'utf8').catch(() => '');
-    const rows = await community.visibleCosmetics(roster.split(/\s+/));
-    const lines = [];
-    for (const row of rows) {
-      if (!row.active_client || !/^[0-9a-f]{32}$/.test(row.mc_uuid)) continue;
-      const tokens = ['client'];
-      if (COSMETIC_ID.test(row.cape || '')) {
-        const ready =
-          !row.cape.startsWith('custom_') ||
-          (await cosmeticImage(row.cape).then(
-            () => true,
-            () => false,
-          ));
-        if (ready) tokens.push(`cape:${row.cape}`);
-      }
-      if (COSMETIC_ID.test(row.hat || '')) tokens.push(`hat:${row.hat}`);
-      if (row.is_admin) tokens.push('admin');
-      lines.push(`${row.mc_uuid}=${tokens.join(',')}`);
-    }
-    atomic(path.join(game, 'antagon-cosmetics.properties'), lines.join('\n') + '\n');
+    await cosmeticsBridge.sync({ force });
   } catch {
     // Retain the previous snapshot during a temporary network failure.
-  } finally {
-    cosmeticsReading = false;
   }
 }
 async function gameAction() {
@@ -334,7 +292,7 @@ async function gameAction() {
   try {
     const view = (await fs.promises.readFile(file, 'utf8')).trim();
     await fs.promises.unlink(file);
-    if (!['settings', 'friends', 'store', 'admin'].includes(view)) return;
+    if (!['settings', 'friends', 'store', 'admin', 'radio'].includes(view)) return;
     if (view === 'admin' && !(await community?.access())?.isAdmin) return;
     if (!win || win.isDestroyed()) return;
     if (win.isMinimized()) win.restore();
@@ -385,7 +343,15 @@ async function startGame(server) {
       if (!community?.me) throw Error('Não foi possível verificar sua conta no Antagon Client.');
       access = await community.requireActive();
     }
-    const result = await runtime.launch(settings, active, { server, admin: access.isAdmin });
+    const result = await runtime.launch(settings, active, {
+      server,
+      admin: access.isAdmin,
+      beforeSpawn: async () => {
+        if (settings.mode !== 'microsoft' || !community?.me) return;
+        await community.publish().catch(() => {});
+        await cosmeticsBridge.sync({ force: true, ownOnly: true, waitForImages: true }).catch(() => {});
+      },
+    });
     gameCosmetics();
     runtime.child?.once('exit', () => setTimeout(gameActivity, 500));
     return result;
@@ -501,6 +467,7 @@ app.whenReady().then(() => {
     icon: path.join(assets, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -516,7 +483,13 @@ app.whenReady().then(() => {
     account: accountInfo(),
     state,
     version: app.getVersion(),
-    installed: fs.existsSync(path.join(root, 'installation.json')),
+    installed:
+      settings.gameVersion === 'latest-26'
+        ? fs.existsSync(root) &&
+          fs
+            .readdirSync(root)
+            .some((name) => /^minecraft-26\./.test(name) && fs.existsSync(path.join(root, name, 'installation.json')))
+        : fs.existsSync(path.join(root, 'installation.json')),
     optifine: optifine(),
     wallpaper: wallpaper(),
   }));
@@ -543,6 +516,33 @@ app.whenReady().then(() => {
   });
   handle('game:launch', () => startGame());
   community = new Community(root, safeStorage, communityEvent);
+  cosmeticsBridge = new CosmeticsBridge(path.join(root, 'minecraft'), community, cosmeticImage);
+  const radio = new RadioService(community);
+  const radioBridge = new RadioBridge(
+    path.join(root, 'minecraft'),
+    (command) => {
+      if (!win.isDestroyed()) win.webContents.send('radio:command', command);
+    },
+    (buffer) => {
+      const image = nativeImage.createFromBuffer(buffer);
+      return image.isEmpty() ? null : image.resize({ width: 64, height: 64 }).toPNG();
+    },
+  );
+  handle('radio:catalog', async () => {
+    await communityReady;
+    return radio.catalog();
+  });
+  handle('radio:addTrack', (input) => radio.addTrack(input));
+  handle('radio:saveCollection', (input) => radio.saveCollection(input));
+  handle('radio:deleteCollection', (id) => radio.deleteCollection(id));
+  handle('radio:deleteTrack', (id) => radio.deleteTrack(id));
+  handle('radio:report', (snapshot) => {
+    radioBridge.report(snapshot, radio.latest);
+    return true;
+  });
+  setInterval(() => {
+    if (runtime.child) radioBridge.sync();
+  }, 500).unref();
   connectCommunity = async () => {
     if (settings.mode !== 'microsoft' || !account) return community.me;
     if (community.me?.mcUuid === account.id) return community.me;
@@ -555,7 +555,7 @@ app.whenReady().then(() => {
     .then((me) => me || connectCommunity().catch(() => null))
     .then((me) => (checkNotifications(), me));
   setInterval(gameActivity, 5e3).unref();
-  setInterval(gameCosmetics, 15e3).unref();
+  setInterval(gameCosmetics, 250).unref();
   setInterval(gameAction, 250).unref();
   setInterval(gameUiSync, 500).unref();
   setInterval(checkNotifications, 20e3).unref();
@@ -578,40 +578,40 @@ app.whenReady().then(() => {
   handle('community:messages', (id) => (needCommunity(), community.messages(String(id))));
   handle('community:send', (id, body) => (needCommunity(), community.send(String(id), body)));
   handle('community:join', (server) => startGame(String(server || '')));
+  handle('store:featured', () => community.featured());
   handle('store:state', () => (needCommunity(), community.store()));
   handle('store:purchase', (item) => (needCommunity(), community.purchase(String(item || ''))));
-  handle(
-    'store:equip',
-    (item, kind) => (
-      needCommunity(),
-      community.equip(item === null ? null : String(item || ''), String(kind || 'cape'))
-    ),
-  );
+  handle('store:equip', async (item, kind) => {
+    needCommunity();
+    const store = await community.equip(item === null ? null : String(item || ''), String(kind || 'cape'));
+    gameUi.store = store;
+    await gameCosmetics(true);
+    return store;
+  });
   handle('store:checkout', async (pack) => {
     needCommunity();
     const url = await community.checkout(String(pack || ''));
     await shell.openExternal(url);
     return true;
   });
-  handle(
-    'call:signal',
-    (to, callId, kind, payload) => (
-      needCommunity(),
-      community.callSignal(String(to || ''), String(callId || ''), String(kind || ''), payload || {})
-    ),
-  );
-  handle('call:ice', () => (needCommunity(), community.iceServers()));
-  handle('call:microphone', () =>
-    process.platform === 'darwin' ? systemPreferences.askForMediaAccess('microphone') : true,
-  );
-  handle('call:report', (state) => {
-    gameUi.call = state && typeof state === 'object' ? state : null;
-    gameUi.dirty = true;
-  });
   handle('admin:access', () => (needCommunity(), community.access()));
   handle('admin:catalog', () => (needCommunity(), community.adminCatalog()));
   handle('admin:take', (item, take) => (needCommunity(), community.adminTake(String(item || ''), take)));
-  handle('admin:delete', (item) => (needCommunity(), community.adminDelete(String(item || ''))));
+  handle('admin:delete', async (item) => {
+    needCommunity();
+    const catalog = await community.adminDelete(String(item || ''));
+    if (gameUi.store) gameUi.store = await community.store();
+    gameUi.dirty = true;
+    await gameCosmetics(true);
+    return catalog;
+  });
+  handle('admin:update', async (item, input) => {
+    needCommunity();
+    const catalog = await community.adminUpdate(String(item || ''), input);
+    if (gameUi.store) gameUi.store = await community.store();
+    gameUi.dirty = true;
+    return catalog;
+  });
   handle('admin:setActive', (item, active) => (needCommunity(), community.adminSetActive(String(item || ''), active)));
   handle('admin:createCape', (cape) => {
     needCommunity();

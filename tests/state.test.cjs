@@ -85,3 +85,15 @@ test('realtime messages and history merge once and remain chronological', async 
   chat.clear();
   assert.equal(chat.messages.length, 0);
 });
+
+test('database numeric IDs and realtime string IDs identify one message, including same-time messages', async () => {
+  const { createConversation } = await import('../ui/state.mjs');
+  const chat = createConversation();
+  await chat.open('alice', async () => [message(9, 'alice')]);
+  assert.equal(chat.receive(message('9', 'alice')), false);
+  assert.equal(chat.receive(message(10, 'alice')), true);
+  assert.deepEqual(
+    chat.messages.map((m) => String(m.id)),
+    ['9', '10'],
+  );
+});

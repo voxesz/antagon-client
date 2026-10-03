@@ -69,6 +69,14 @@ public final class CoreTest {
             check(MenuLayout.clampScroll(9999, 21, height) == max);
             check(MenuLayout.clampScroll(-1, 21, height) == 0);
         }
-        System.out.println("Java OK: reflection overloads, inherited fields and menu bounds.");
+        check("ambos".equals(ModuleRegistry.defaultValue("cps.buttons")));
+        check("on".equals(ModuleRegistry.defaultValue("cps.suffix")));
+        check("7 | 4 CPS".equals(ModuleRegistry.cpsText(7, 4, "ambos", true)));
+        check("7 | 4".equals(ModuleRegistry.cpsText(7, 4, "ambos", false)));
+        check("7 CPS".equals(ModuleRegistry.cpsText(7, 4, "esquerdo", true)));
+        check("7".equals(ModuleRegistry.cpsText(7, 4, "esquerdo", false)));
+        check("4 CPS".equals(ModuleRegistry.cpsText(7, 4, "direito", true)));
+        check("4".equals(ModuleRegistry.cpsText(7, 4, "direito", false)));
+        System.out.println("Java OK: reflection, menu bounds and all CPS display modes.");
     }
 }

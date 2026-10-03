@@ -6,6 +6,26 @@ async function call(channel, ...args) {
 }
 contextBridge.exposeInMainWorld('antagon', {
   platform: process.platform,
+  radio: {
+    catalog: () => call('radio:catalog'),
+    addTrack: (input) => call('radio:addTrack', input),
+    saveCollection: (input) => call('radio:saveCollection', input),
+    deleteCollection: (id) => call('radio:deleteCollection', id),
+    deleteTrack: (id) => call('radio:deleteTrack', id),
+    report: (state) =>
+      call('radio:report', {
+        state: state.state,
+        trackId: state.track?.id,
+        collectionId: state.collection?.id,
+        position: state.position,
+        volume: state.volume,
+      }),
+    onCommand: (fn) => {
+      const listener = (_, command) => fn(command);
+      ipcRenderer.on('radio:command', listener);
+      return () => ipcRenderer.removeListener('radio:command', listener);
+    },
+  },
   discord: {
     state: () => call('discord:state'),
     onState: (fn) => {
@@ -37,18 +57,8 @@ contextBridge.exposeInMainWorld('antagon', {
       return () => ipcRenderer.removeListener('community:notify', listener);
     },
   },
-  call: {
-    signal: (to, callId, kind, payload) => call('call:signal', to, callId, kind, payload),
-    iceServers: () => call('call:ice'),
-    microphone: () => call('call:microphone'),
-    report: (state) => call('call:report', state),
-    onCommand: (fn) => {
-      const listener = (_, command) => fn(command);
-      ipcRenderer.on('call:command', listener);
-      return () => ipcRenderer.removeListener('call:command', listener);
-    },
-  },
   store: {
+    featured: () => call('store:featured'),
     state: () => call('store:state'),
     purchase: (item) => call('store:purchase', item),
     equip: (item, kind) => call('store:equip', item, kind),
@@ -62,6 +72,7 @@ contextBridge.exposeInMainWorld('antagon', {
     setActive: (item, active) => call('admin:setActive', item, active),
     take: (item, take) => call('admin:take', item, take),
     remove: (item) => call('admin:delete', item),
+    update: (item, input) => call('admin:update', item, input),
     createCape: (cape) => call('admin:createCape', cape),
   },
   init: () => call('app:init'),
