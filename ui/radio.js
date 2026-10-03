@@ -42,14 +42,14 @@ export function mountRadio(api, toast) {
     reportBusy = false;
   $('#view-radio').innerHTML = `
     <div class="radio-page">
-      <header class="radio-heading"><div><span class="radio-eyebrow">ANTAGON MUSIC</span><h1>Encontre sua frequência.</h1><p>O som certo para acompanhar sua próxima partida.</p></div><button id="radio-manage" class="secondary" hidden>Gerenciar músicas</button></header>
+      <header class="radio-heading"><h1>Rádio</h1><button id="radio-manage" class="secondary" hidden>Gerenciar músicas</button></header>
       <div class="radio-hero" id="radio-hero"></div>
       <div class="radio-toolbar"><div class="radio-modes" role="group" aria-label="Modo de reprodução"><button data-radio-mode="radio" class="active">${icon('radio')} Ao vivo</button><button data-radio-mode="playlist">${icon('play')} Playlists</button></div><button id="radio-refresh" class="radio-refresh">Atualizar catálogo ↻</button></div>
       <div class="radio-genres" id="radio-genres" role="group" aria-label="Estilo musical"></div>
       <p class="radio-notice" id="radio-notice" role="status" hidden></p>
       <div class="radio-grid" id="radio-grid"></div>
       <section class="radio-detail" id="radio-detail" aria-label="Músicas da seleção" hidden></section>
-      <p class="radio-footnote" id="radio-footnote">Uma mesma frequência para todos. Escolha uma rádio e entre no ar.</p>
+      <p class="radio-footnote" id="radio-footnote">Nas rádios, todos ouvem a mesma música ao mesmo tempo.</p>
     </div>`;
   const footer = document.createElement('footer');
   footer.className = 'music-player';
@@ -86,9 +86,7 @@ export function mountRadio(api, toast) {
     $('#music-title').textContent = state.track?.title || 'Aguardando programação';
     $('#music-artist').textContent =
       state.error ||
-      (state.state === 'buffering'
-        ? 'Carregando áudio…'
-        : state.track?.artist || 'As músicas aparecerão aqui quando a rádio entrar no ar.');
+      (state.state === 'buffering' ? 'Carregando áudio…' : state.track?.artist || 'Nenhuma música na programação.');
     $('#music-collection').textContent = state.collection.name;
     $('#music-toggle').setAttribute(
       'aria-label',
@@ -116,7 +114,7 @@ export function mountRadio(api, toast) {
     $('#radio-hero').hidden = mode !== 'radio' || !main;
     if (main)
       $('#radio-hero').innerHTML =
-        `<div class="radio-hero-copy"><span class="radio-eyebrow"><span class="radio-dot"></span> A FREQUÊNCIA DA COMUNIDADE</span><h2>${esc(main.name)}</h2><p>${esc(main.description)}</p><button class="radio-listen" data-radio-play="${esc(main.id)}" ${available(main) ? '' : 'disabled'}>${icon('play')} ${available(main) ? 'Ouvir ao vivo' : 'Em preparação'}</button><span class="radio-hero-note">${available(main) ? 'Mesma música. Mesmo momento.' : 'As primeiras músicas chegam em breve.'}</span></div>${cover(main, 'hero-art')}`;
+        `<div class="radio-hero-copy"><span class="radio-eyebrow"><span class="radio-dot"></span> ${available(main) ? 'AO VIVO' : 'RÁDIO'}</span><h2>${esc(main.name)}</h2><p>${esc(main.description)}</p><button class="radio-listen" data-radio-play="${esc(main.id)}" ${available(main) ? '' : 'disabled'}>${icon('play')} ${available(main) ? 'Ouvir ao vivo' : 'Em preparação'}</button></div>${cover(main, 'hero-art')}`;
     const list = catalog.collections.filter((c) => c.mode === mode);
     const genres = ['Todos', ...new Set(list.map((c) => c.genre))];
     if (!genres.includes(genre)) genre = 'Todos';
@@ -134,11 +132,11 @@ export function mountRadio(api, toast) {
               `<button class="radio-card" data-radio-open="${esc(c.id)}">${cover(c)}<span class="radio-card-meta"><small>${esc(c.genre)}${c.mode === 'radio' ? ' · RÁDIO' : ''}</small><b>${esc(c.name)}</b><span class="radio-card-now" data-now="${esc(c.id)}">${c.trackIds.length ? `${c.trackIds.length} músicas` : 'Em preparação'}</span></span><span class="radio-card-arrow">↗</span></button>`,
           )
           .join('')
-      : '<div class="radio-empty">As playlists estão sendo preparadas. Volte em breve para encontrar sua próxima trilha.</div>';
+      : '<div class="radio-empty">Nenhuma seleção disponível.</div>';
     $('#radio-footnote').textContent =
       mode === 'radio'
-        ? 'Todos ouvem juntos. Ao voltar, você acompanha o ponto atual da transmissão.'
-        : 'No seu ritmo. Pause, volte e pule músicas quando quiser.';
+        ? 'Nas rádios, todos ouvem a mesma música ao mesmo tempo. Ao retomar, você acompanha o ponto atual da transmissão.'
+        : 'Nas playlists, você pode pausar, voltar e avançar músicas.';
     $('#radio-notice').hidden = !message;
     $('#radio-notice').textContent = message;
     renderDetail();

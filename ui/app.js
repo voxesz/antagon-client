@@ -322,7 +322,7 @@ function itemPreview(item) {
   return `<img class="${item.kind === 'hat' ? 'hat' : ''}" src="${meta.image}" alt="" />`;
 }
 const itemDescription = (item) =>
-  ITEMS[item.id]?.description || (item.kind === 'hat' ? 'Acessório para a cabeça.' : 'Capa exclusiva.');
+  ITEMS[item.id]?.description || (item.kind === 'hat' ? 'Acessório para a cabeça.' : 'Capa personalizada.');
 let featuredRequest = null;
 function refreshFeatured() {
   if (featuredRequest) return featuredRequest;
@@ -337,7 +337,7 @@ function refreshFeatured() {
                 `<button class="featured-card" data-featured-item="${escape(item.id)}" aria-label="Ver ${escape(item.name)} na loja"><span class="featured-art"><span class="featured-kind">${item.kind === 'hat' ? 'Acessório' : 'Capa'}</span>${itemPreview(item)}</span><span class="featured-info"><span><b>${escape(item.name)}</b><span class="featured-price"><img src="../assets/antagon-coin.png" alt="" />${Number(item.price).toLocaleString('pt-BR')} ANTAGOIN$</span></span><span class="featured-arrow" aria-hidden="true">↗</span></span></button>`,
             )
             .join('')
-        : '<p class="featured-empty">Novos destaques em breve. Explore os cosméticos na loja.</p>';
+        : '<p class="featured-empty">Nenhum item em destaque.</p>';
     } catch {
       target.innerHTML =
         '<p class="featured-empty">Não foi possível carregar os destaques. <button id="featured-retry" class="text-button">Tentar novamente</button></p>';

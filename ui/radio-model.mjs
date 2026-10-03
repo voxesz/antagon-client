@@ -35,7 +35,7 @@ export const EMPTY_CATALOG = {
       name: 'Rádio Antagon',
       mode: 'radio',
       genre: 'Mix',
-      description: 'Vários estilos. Uma frequência. Todo mundo junto.',
+      description: 'Rádio com estilos variados.',
       coverUrl: '',
       trackIds: [],
       schedules: [],

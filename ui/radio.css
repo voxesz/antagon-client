@@ -34,10 +34,6 @@
   margin: 7px 0 4px;
   letter-spacing: -0.3px;
 }
-.radio-heading p {
-  color: var(--muted);
-  margin: 0;
-}
 .radio-hero {
   min-height: 218px;
   position: relative;
@@ -89,11 +85,7 @@
   width: 18px;
   height: 18px;
 }
-.radio-hero-note {
-  color: #ae8c8c;
-  font-size: 11px;
-  margin-left: 14px;
-}
+
 .radio-art {
   --art: #a4182d;
   display: block;
@@ -757,10 +749,7 @@
     width: 230px;
     margin-right: 28px;
   }
-  .radio-hero-note {
-    display: block;
-    margin: 9px 0 0;
-  }
+
   .radio-hero-copy {
     padding: 25px;
   }

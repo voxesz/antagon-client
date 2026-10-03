@@ -50,7 +50,7 @@ function wav(seconds = 20) {
         name,
         genre,
         mode,
-        description: 'Vários estilos. Uma frequência. Todo mundo junto.',
+        description: 'Rádio com estilos variados.',
         trackIds: tracks.map((t) => t.id),
         coverUrl: '',
         schedules: mode === 'radio' ? [{ startsAt: Date.now() - 3000, trackIds: tracks.map((t) => t.id) }] : [],

@@ -890,7 +890,7 @@ public class AntagonHud {
         String title = radioTitle, sub = radioArtist;
         if (title.isEmpty()) {
             title = "RÁDIO ANTAGON";
-            sub = "Escolha sua frequência no menu";
+            sub = "Selecione uma rádio ou playlist";
         }
         text(fit(title, w - tx - 6), tx, 5, WHITE);
         text(fit(sub, w - tx - 6), tx, 17, GRAY);

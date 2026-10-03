@@ -455,17 +455,10 @@ main {
 }
 .home-heading,
 .featured-heading,
-.launch-heading,
-.home-footer {
+.launch-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.eyebrow {
-  color: #999a9c;
-  font-size: 10px;
-  letter-spacing: 2px;
-  font-weight: 700;
 }
 .home-heading {
   margin-bottom: 19px;
@@ -499,41 +492,6 @@ main {
   height: 100%;
   object-fit: cover;
   object-position: 53% center;
-}
-.home-artwork::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, #080e19ed, #11192710 68%);
-  pointer-events: none;
-}
-.home-art-caption {
-  position: absolute;
-  z-index: 1;
-  bottom: 27px;
-  left: 30px;
-}
-.hero-mark {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 9px;
-  letter-spacing: 1.6px;
-  color: #d8dce3;
-}
-.hero-mark img {
-  width: 19px;
-  height: 19px;
-}
-.home-art-caption h2 {
-  font: 46px var(--pixel);
-  margin: 12px 0 5px;
-  text-shadow: 0 2px 15px #0004;
-}
-.home-art-caption p {
-  margin: 0;
-  color: #b2bdca;
-  font-size: 12px;
 }
 .launch-settings {
   padding: 15px;
@@ -789,12 +747,6 @@ main {
   color: var(--muted);
   font-size: 13px;
   text-align: center;
-}
-.home-footer {
-  margin-top: 22px;
-  color: #575b62;
-  font-size: 9px;
-  letter-spacing: 1.2px;
 }
 .store-item:focus-within {
   outline: 1px solid var(--red);
