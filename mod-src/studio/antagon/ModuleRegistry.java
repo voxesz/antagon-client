@@ -31,7 +31,10 @@ final class ModuleRegistry {
         "fullbright",
         "ownnametag",
         "itemphysics",
-        "itemsize"
+        "itemsize",
+        "armor",
+        "potions",
+        "oldanimations"
     };
     static final String[] NAMES = {
         "FPS",
@@ -57,11 +60,15 @@ final class ModuleRegistry {
         "FULL BRIGHT",
         "NAMETAG PRÓPRIO",
         "ITEM PHYSICS",
-        "ITEM SIZE"
+        "ITEM SIZE",
+        "ARMOR STATUS",
+        "POTION STATUS",
+        "1.7 ANIMATIONS"
     };
     static final boolean[] DEFAULT_ON = {
         true, true, true, false, true, false, false, false, false, false, false, false, false,
-        false, false, false, false, false, false, false, false, true, false, false
+        false, false, false, false, false, false, false, false, true, false, false, false, false,
+        false
     };
     static final int AUTOTEXT_SLOTS = 6;
     static final String COLOR_VALUES = "branco,vermelho,amarelo,verde,ciano";
@@ -78,10 +85,11 @@ final class ModuleRegistry {
         "Rádios e playlists", "Distância do último hit", "Hits seguidos",
         "Limites visuais das entidades", "Cor do efeito de dano", "Atalhos de mensagens",
         "Tamanho, fundo e números", "Remove o bloqueio de clique", "Brilho máximo",
-        "Seu nome em terceira pessoa", "Itens deitados no chão", "Tamanho dos itens na mão"
+        "Seu nome em terceira pessoa", "Itens deitados no chão", "Tamanho dos itens na mão",
+        "Armadura e durabilidade", "Efeitos ativos e duração", "Animações clássicas dos itens"
     };
     private static final int[] CATEGORY = {
-        1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 3, 3, 2
+        1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 3, 3, 2, 1, 1, 2
     };
 
     static int[] filter(int category) {
@@ -129,8 +137,10 @@ final class ModuleRegistry {
     }
 
     static String cpsText(int left, int right, String buttons, boolean suffix) {
-        String value = buttons.equals("esquerdo") ? "" + left
-                : buttons.equals("direito") ? "" + right : left + " | " + right;
+        String value =
+                buttons.equals("esquerdo")
+                        ? "" + left
+                        : buttons.equals("direito") ? "" + right : left + " | " + right;
         return value + (suffix ? " CPS" : "");
     }
 
@@ -202,6 +212,27 @@ final class ModuleRegistry {
             };
         if (mod.equals("itemsize"))
             return new String[][] {{"scale", "TAMANHO NA MÃO", "range:25:150:5:%", "70%"}};
+        if (mod.equals("armor"))
+            return new String[][] {
+                SIZE,
+                {"layout", "ORIENTAÇÃO", "vertical,horizontal"},
+                {"held", "ITEM NA MÃO", "on,off"},
+                {"durability", "DURABILIDADE", "porcentagem,restante,off"},
+                {"bg", "FUNDO", "on,off"}
+            };
+        if (mod.equals("potions"))
+            return new String[][] {
+                SIZE,
+                {"names", "NOME DO EFEITO", "on,off"},
+                {"blink", "AVISO AO TERMINAR", "on,off"},
+                {"bg", "FUNDO", "on,off"}
+            };
+        if (mod.equals("oldanimations"))
+            return new String[][] {
+                {"block", "BLOCKHIT", "on,off"},
+                {"bow", "ARCO", "on,off"},
+                {"eating", "COMIDA E BEBIDA", "on,off"}
+            };
         if (mod.equals("hitdelay")) return new String[0][];
         if (mod.equals("ownnametag") || mod.equals("itemphysics")) return new String[0][];
         if (mod.equals("fullbright"))

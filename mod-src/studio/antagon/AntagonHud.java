@@ -29,7 +29,6 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.lang.reflect.*;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,7 +52,8 @@ public class AntagonHud {
     private static final int SETTINGS_BUTTON_ID = 0xA71B,
             FRIENDS_BUTTON_ID = 0xA71C,
             STORE_BUTTON_ID = 0xA71D,
-            ADMIN_BUTTON_ID = 0xA71E;
+            ADMIN_BUTTON_ID = 0xA71E,
+            RADIO_BUTTON_ID = 0xA71F;
     private static final File UI_REQUEST = new File("antagon-ui-request.txt");
     private static final File SESSION = new File("antagon-session.properties");
     private Object mc;
@@ -64,6 +64,7 @@ public class AntagonHud {
     private long lastLoad = 0, modified = -1;
     private boolean hidden = false, f8 = false, reported = false;
     private final PixelFont font = new PixelFont();
+    private final ClientMenus clientMenus = new ClientMenus();
     private long lastAutoText = 0;
     private int smokeTicks = 0, worldTicks = 0;
     private final SimpleDateFormat clock12 = new SimpleDateFormat("hh:mm a");
@@ -71,6 +72,8 @@ public class AntagonHud {
     private String clockText = "", clockFormat = "";
     private long clockMinute = -1;
     private boolean smokeStarted = false;
+    private double smokeRadioPosition;
+    private String smokeRadioTrack;
     private final Map<String, float[]> bounds = new HashMap<String, float[]>();
     private float hudScale = 1, hudWidth, hudHeight;
     private Menu menu;
@@ -94,7 +97,6 @@ public class AntagonHud {
     private int artTexture = 0;
     private boolean menuLogoLogged = false;
     private boolean capeRenderLogged = false;
-    private final Map<String, Object> menuIcons = new HashMap<String, Object>();
     private String lastChat = null;
     private int chatId = 0x5A0000, chatCount = 0;
     private static final String YAW = "field_70177_z",
@@ -323,54 +325,27 @@ public class AntagonHud {
     public void menuButtons(GuiScreenEvent.InitGuiEvent.Post event) {
         try {
             Object gui = field(event, "gui");
-            String name = gui.getClass().getName();
-            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
-                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            if (!ClientMenus.supports(gui)) return;
+            boolean paused = gui.getClass().getName().endsWith("GuiIngameMenu");
             @SuppressWarnings("unchecked")
             List<Object> buttons = (List<Object>) field(event, "buttonList");
+            int settings = paused ? SETTINGS_BUTTON_ID : MENU_BUTTON_ID;
             for (Object button : buttons)
-                if (((Number) field(button, "field_146127_k", "id")).intValue() == MENU_BUTTON_ID)
-                    return;
-            if (name.equals("net.minecraft.client.gui.GuiIngameMenu")) {
-                Object lan = null;
-                for (Object button : buttons)
-                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 7)
-                        lan = button;
-                if (lan == null) return;
-                int lanX = ((Number) field(lan, "field_146128_h", "xPosition")).intValue();
-                int lanY = ((Number) field(lan, "field_146129_i", "yPosition")).intValue();
-                int rowWidth = ((Number) field(lan, "field_146120_f", "width")).intValue();
-                for (Object button : buttons) {
-                    int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
-                    setField(button, y + (y < lanY ? -12 : 12), "field_146129_i", "yPosition");
-                }
-                int[] ids =
-                        sessionAdmin()
-                                ? new int[] {
-                                    SETTINGS_BUTTON_ID,
-                                    FRIENDS_BUTTON_ID,
-                                    STORE_BUTTON_ID,
-                                    ADMIN_BUTTON_ID
-                                }
-                                : new int[] {
-                                    SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, STORE_BUTTON_ID
-                                };
-                int gap = 4, size = 20, total = ids.length * size + (ids.length - 1) * gap;
-                int x = lanX + (rowWidth - total) / 2;
-                for (int id : ids) {
-                    buttons.add(newButton(id, x, lanY - 12, size, ""));
-                    x += size + gap;
-                }
-            } else {
-                Object quit = null;
-                for (Object button : buttons)
-                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 4)
-                        quit = button;
-                if (quit == null) return;
-                int quitX = ((Number) field(quit, "field_146128_h", "xPosition")).intValue();
-                int y = ((Number) field(quit, "field_146129_i", "yPosition")).intValue() + 24;
-                buttons.add(newButton(MENU_BUTTON_ID, quitX - 102, y, 200, "Antagon"));
-            }
+                if (((Number) field(button, "field_146127_k", "id")).intValue() == settings) return;
+            buttons.add(newButton(settings, 0, 0, 100, "Opções Antagon"));
+            buttons.add(newButton(FRIENDS_BUTTON_ID, 0, 0, 20, ""));
+            buttons.add(newButton(STORE_BUTTON_ID, 0, 0, 20, ""));
+            buttons.add(newButton(RADIO_BUTTON_ID, 0, 0, 20, ""));
+            if (sessionAdmin()) buttons.add(newButton(ADMIN_BUTTON_ID, 0, 0, 20, ""));
+            clientMenus.layout(
+                    gui,
+                    buttons,
+                    paused,
+                    settings,
+                    FRIENDS_BUTTON_ID,
+                    STORE_BUTTON_ID,
+                    ADMIN_BUTTON_ID,
+                    RADIO_BUTTON_ID);
         } catch (Exception e) {
             report(e);
         }
@@ -393,88 +368,32 @@ public class AntagonHud {
     }
 
     @SubscribeEvent
-    public void menuButtonLogo(GuiScreenEvent.DrawScreenEvent.Post event) {
+    public void menuButtonLogo(GuiScreenEvent.DrawScreenEvent.Pre event) {
         try {
             Object gui = field(event, "gui");
-            String name = gui.getClass().getName();
-            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
-                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            if (!ClientMenus.supports(gui)) return;
+            boolean paused = gui.getClass().getName().endsWith("GuiIngameMenu");
             @SuppressWarnings("unchecked")
             List<Object> buttons = (List<Object>) field(gui, "field_146292_n", "buttonList");
-            int mouseX = ((Number) field(event, "mouseX")).intValue();
-            int mouseY = ((Number) field(event, "mouseY")).intValue();
-            String tooltip = null;
-            for (Object button : buttons) {
-                int id = ((Number) field(button, "field_146127_k", "id")).intValue();
-                String icon =
-                        id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID
-                                ? "logo"
-                                : id == FRIENDS_BUTTON_ID
-                                        ? "chat"
-                                        : id == STORE_BUTTON_ID
-                                                ? "store"
-                                                : id == ADMIN_BUTTON_ID ? "admin" : null;
-                if (icon == null) continue;
-                int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
-                int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
-                int width = ((Number) field(button, "field_146120_f", "width")).intValue();
-                drawMenuIcon(icon, id == MENU_BUTTON_ID ? x + width / 2 - 39 : x + 2, y + 2);
-                if (id != MENU_BUTTON_ID
-                        && mouseX >= x
-                        && mouseX < x + width
-                        && mouseY >= y
-                        && mouseY < y + 20)
-                    tooltip =
-                            id == SETTINGS_BUTTON_ID
-                                    ? "Configurações Antagon"
-                                    : id == FRIENDS_BUTTON_ID
-                                            ? "Amigos e chat"
-                                            : id == STORE_BUTTON_ID
-                                                    ? "Loja de cosméticos"
-                                                    : "Admin";
-                if (!menuLogoLogged) {
-                    System.out.println("[ANTAGON] Menu icons rendered");
-                    menuLogoLogged = true;
-                }
+            clientMenus.draw(
+                    gui,
+                    buttons,
+                    ((Number) field(event, "mouseX")).intValue(),
+                    ((Number) field(event, "mouseY")).intValue(),
+                    paused,
+                    paused ? SETTINGS_BUTTON_ID : MENU_BUTTON_ID,
+                    FRIENDS_BUTTON_ID,
+                    STORE_BUTTON_ID,
+                    ADMIN_BUTTON_ID,
+                    RADIO_BUTTON_ID);
+            event.setCanceled(true);
+            if (!menuLogoLogged) {
+                System.out.println("[ANTAGON] Menu icons rendered");
+                menuLogoLogged = true;
             }
-            if (tooltip != null)
-                call(
-                        gui,
-                        new String[] {"func_146283_a", "drawHoveringText"},
-                        Collections.singletonList(tooltip),
-                        mouseX,
-                        mouseY);
         } catch (Exception e) {
             report(e);
         }
-    }
-
-    private void drawMenuIcon(String icon, int x, int y) throws Exception {
-        Object location = menuIcons.get(icon);
-        if (location == null) {
-            location =
-                    Class.forName("net.minecraft.util.ResourceLocation")
-                            .getConstructor(String.class, String.class)
-                            .newInstance("antagon", icon + ".png");
-            menuIcons.put(icon, location);
-        }
-        Class<?> state = Class.forName("net.minecraft.client.renderer.GlStateManager");
-        invoke(state, null, new String[] {"func_179147_l", "enableBlend"});
-        invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
-        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
-        call(textures, new String[] {"func_110577_a", "bindTexture"}, location);
-        invoke(
-                Class.forName("net.minecraft.client.gui.Gui"),
-                null,
-                new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
-                x,
-                y,
-                0f,
-                0f,
-                16,
-                16,
-                16f,
-                16f);
     }
 
     @SubscribeEvent
@@ -484,6 +403,8 @@ public class AntagonHud {
             int id = ((Number) field(button, "field_146127_k", "id")).intValue();
             GuiScreen screen = (GuiScreen) field(event, "gui");
             if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
+            else if (id == RADIO_BUTTON_ID)
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new RadioMenu(screen));
             else if (id == FRIENDS_BUTTON_ID || id == STORE_BUTTON_ID)
                 call(
                         mc,
@@ -549,6 +470,10 @@ public class AntagonHud {
         Hooks.hideScoreboard = enabled("scoreboard");
         Hooks.itemPhysics = enabled("itemphysics");
         Hooks.heldItemScale = enabled("itemsize") ? percent("itemsize", "scale") : 1f;
+        LegacyAnimations.enabled = enabled("oldanimations");
+        LegacyAnimations.block = flag("oldanimations", "block");
+        LegacyAnimations.bow = flag("oldanimations", "bow");
+        LegacyAnimations.eating = flag("oldanimations", "eating");
         fullBright();
         if (enabled("hitdelay"))
             try {
@@ -766,7 +691,14 @@ public class AntagonHud {
     }
 
     private void radioPlay() {
-        try { requestLauncherView("radio"); } catch (IOException ignored) {}
+        try {
+            call(
+                    mc,
+                    new String[] {"func_147108_a", "displayGuiScreen"},
+                    new RadioMenu((GuiScreen) field(mc, "field_71462_r", "currentScreen")));
+        } catch (Exception e) {
+            report(e);
+        }
     }
 
     private void radioToggle() {
@@ -776,13 +708,14 @@ public class AntagonHud {
     private void radioLoop() {
         while (true) {
             try {
-                if (!smokeConfig) {
+                if (!smokeConfig || NativeRadio.collection != null) {
                     Properties p = Radio.status();
                     radioState = p.getProperty("state", "off");
                     radioTitle = p.getProperty("title", "");
                     String collection = p.getProperty("collection", "");
                     radioArtist = p.getProperty("artist", "");
-                    if (p.getProperty("mode", "").equals("radio")) radioArtist = "AO VIVO · " + radioArtist;
+                    if (p.getProperty("mode", "").equals("radio"))
+                        radioArtist = "AO VIVO · " + radioArtist;
                     if (radioTitle.isEmpty()) radioArtist = collection;
                     radioPos = Platform.number(p.getProperty("position", "0"));
                     radioDur = Platform.number(p.getProperty("duration", "0"));
@@ -800,16 +733,18 @@ public class AntagonHud {
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception ignored) {
-                try { Thread.sleep(1000); }
-                catch (InterruptedException interrupted) { return; }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException interrupted) {
+                    return;
+                }
             }
         }
     }
 
     private void loadArt(String url) {
         try {
-            BufferedImage src =
-                    Radio.isArt(url) ? ImageIO.read(new File(url)) : null;
+            BufferedImage src = Radio.isArt(url) ? ImageIO.read(new File(url)) : null;
             if (src == null) {
                 artPending = null;
                 return;
@@ -1214,11 +1149,20 @@ public class AntagonHud {
                 case 10:
                     Object enteringPlayer = field(mc, "field_71439_g", "thePlayer");
                     if (Cosmetics.cape(null, enteringPlayer) == null)
-                        throw new IllegalStateException("Capa pré-carregada ausente na entrada do mundo");
-                    Object enteringProfile = call(enteringPlayer, new String[] {"func_146103_bH", "getGameProfile"});
-                    String enteringId = call(enteringProfile, new String[] {"getId"}).toString().replace("-", "");
-                    if (!new String(Files.readAllBytes(new File("antagon-players.txt").toPath()), StandardCharsets.UTF_8).contains(enteringId))
-                        throw new IllegalStateException("Lista de jogadores atrasada na entrada do mundo");
+                        throw new IllegalStateException(
+                                "Capa pré-carregada ausente na entrada do mundo");
+                    Object enteringProfile =
+                            call(enteringPlayer, new String[] {"func_146103_bH", "getGameProfile"});
+                    String enteringId =
+                            call(enteringProfile, new String[] {"getId"})
+                                    .toString()
+                                    .replace("-", "");
+                    if (!new String(
+                                    Files.readAllBytes(new File("antagon-players.txt").toPath()),
+                                    StandardCharsets.UTF_8)
+                            .contains(enteringId))
+                        throw new IllegalStateException(
+                                "Lista de jogadores atrasada na entrada do mundo");
                     System.out.println("[ANTAGON TEST] Cosmetics and roster ready on world entry");
                     break;
                 case 140:
@@ -1889,13 +1833,21 @@ public class AntagonHud {
                     break;
                 case 700:
                     {
+                        if ("1".equals(System.getenv("ANTAGON_TEST_RADIO"))) NativeRadio.open();
                         Object self = field(mc, "field_71439_g", "thePlayer");
                         setF(self, PITCH, 0f);
                         Object inventory = field(self, "field_71071_by", "inventory");
-                        Object[] items = (Object[]) field(inventory, "field_70462_a", "mainInventory");
-                        Object sword = Class.forName("net.minecraft.init.Items").getField("field_151048_u").get(null);
-                        items[0] = Class.forName("net.minecraft.item.ItemStack")
-                                .getConstructor(Class.forName("net.minecraft.item.Item"), int.class).newInstance(sword, 1);
+                        Object[] items =
+                                (Object[]) field(inventory, "field_70462_a", "mainInventory");
+                        Object sword =
+                                Class.forName("net.minecraft.init.Items")
+                                        .getField("field_151048_u")
+                                        .get(null);
+                        items[0] =
+                                Class.forName("net.minecraft.item.ItemStack")
+                                        .getConstructor(
+                                                Class.forName("net.minecraft.item.Item"), int.class)
+                                        .newInstance(sword, 1);
                         setField(inventory, 0, "field_70461_c", "currentItem");
                         config.setProperty("itemsize", "true");
                         config.setProperty("itemsize.scale", "50%");
@@ -1920,9 +1872,191 @@ public class AntagonHud {
                     break;
                 case 745:
                     shot("antagon-item-size-options.png");
-                    System.out.println("[ANTAGON TEST] Item Size renders the configured scale and restores vanilla when disabled");
+                    System.out.println(
+                            "[ANTAGON TEST] Item Size renders the configured scale and restores"
+                                    + " vanilla when disabled");
                     break;
                 case 750:
+                    {
+                        call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                        Object self = field(mc, "field_71439_g", "thePlayer");
+                        Object inv = field(self, "field_71071_by", "inventory");
+                        Object[] armor = (Object[]) field(inv, "field_70460_b", "armorInventory");
+                        for (int i = 0; i < 4; i++) {
+                            armor[i] = StatusData.item(313 - i);
+                            call(
+                                    armor[i],
+                                    new String[] {"func_77964_b", "setItemDamage"},
+                                    20 + i * 50);
+                        }
+                        Class<?> potionEffect = Class.forName("net.minecraft.potion.PotionEffect");
+                        call(
+                                self,
+                                new String[] {"func_70690_d", "addPotionEffect"},
+                                potionEffect
+                                        .getConstructor(int.class, int.class, int.class)
+                                        .newInstance(1, 2400, 1));
+                        call(
+                                self,
+                                new String[] {"func_70690_d", "addPotionEffect"},
+                                potionEffect
+                                        .getConstructor(int.class, int.class, int.class)
+                                        .newInstance(5, 180, 0));
+                        config.setProperty("armor", "true");
+                        config.setProperty("potions", "true");
+                    }
+                    break;
+                case 765:
+                    {
+                        Object self = field(mc, "field_71439_g", "thePlayer");
+                        if (StatusData.armor(self, true, false).size() != 5
+                                || StatusData.potions(self, false).size() != 2)
+                            throw new IllegalStateException(
+                                    "Status data did not read the player's equipment/effects");
+                        shot("antagon-status-vertical.png");
+                        config.setProperty("armor.layout", "horizontal");
+                        config.setProperty("armor.durability", "restante");
+                    }
+                    break;
+                case 780:
+                    shot("antagon-status-horizontal.png");
+                    System.out.println(
+                            "[ANTAGON TEST] Armor and potion status read real equipment and"
+                                    + " effects");
+                    config.setProperty("oldanimations", "true");
+                    LegacyAnimations.transforms = 0;
+                    break;
+                case 785:
+                    {
+                        Object self = field(mc, "field_71439_g", "thePlayer");
+                        Object held = call(self, new String[] {"func_70694_bm", "getHeldItem"});
+                        call(self, new String[] {"func_71008_a", "setItemInUse"}, held, 72000);
+                        setField(self, .4f, "field_70733_aJ", "swingProgress");
+                        setField(self, .4f, "field_70732_aI", "prevSwingProgress");
+                        LegacyAnimations.frame(.5f);
+                        if (Math.abs(LegacyAnimations.swing(0) - .4f) > .001f)
+                            throw new IllegalStateException(
+                                    "1.7 block animation did not restore swing");
+                        Object inventory = field(self, "field_71071_by", "inventory");
+                        Object[] items =
+                                (Object[]) field(inventory, "field_70462_a", "mainInventory");
+                        for (int item : new int[] {261, 260, 373}) {
+                            items[0] = StatusData.item(item);
+                            call(
+                                    self,
+                                    new String[] {"func_71008_a", "setItemInUse"},
+                                    items[0],
+                                    72000);
+                            LegacyAnimations.frame(.5f);
+                            if (Math.abs(LegacyAnimations.swing(0) - .4f) > .001f)
+                                throw new IllegalStateException(
+                                        "1.7 use animation failed for item " + item);
+                            LegacyAnimations.bow = LegacyAnimations.eating = false;
+                            LegacyAnimations.frame(.5f);
+                            if (LegacyAnimations.swing(0) != 0)
+                                throw new IllegalStateException(
+                                        "Disabled 1.7 option still changes animation");
+                            LegacyAnimations.bow = LegacyAnimations.eating = true;
+                        }
+                        items[0] = held;
+                        call(self, new String[] {"func_71008_a", "setItemInUse"}, held, 72000);
+                    }
+                    break;
+                case 800:
+                    if (LegacyAnimations.transforms < 2)
+                        throw new IllegalStateException("1.7 hook did not run in renderer");
+                    shot("antagon-legacy-block.png");
+                    config.setProperty("oldanimations", "false");
+                    break;
+                case 805:
+                    LegacyAnimations.transforms = 0;
+                    break;
+                case 815:
+                    if (LegacyAnimations.transforms != 0 || LegacyAnimations.swing(.2f) != .2f)
+                        throw new IllegalStateException(
+                                "Disabled animations did not restore vanilla");
+                    System.out.println(
+                            "[ANTAGON TEST] 1.7 animations render and restore vanilla when"
+                                    + " disabled");
+                    openMenu();
+                    menu.editing = true;
+                    break;
+                case 825:
+                    shot("antagon-status-editor.png");
+                    break;
+                case 830:
+                    if (!"1".equals(System.getenv("ANTAGON_TEST_RADIO"))) {
+                        call(mc, new String[] {"func_71400_g", "shutdown"});
+                        break;
+                    }
+                    if (NativeRadio.catalog == null)
+                        throw new IllegalStateException(
+                                "Native radio catalog unavailable: " + NativeRadio.catalogError);
+                    for (RadioCatalog.Collection collection : NativeRadio.catalog.collections)
+                        if (!collection.live() && collection.name.equalsIgnoreCase("GeekFM")) {
+                            NativeRadio.volume(0);
+                            NativeRadio.select(collection.id, 0);
+                            smokeRadioTrack = NativeRadio.track.id;
+                            break;
+                        }
+                    if (smokeRadioTrack == null)
+                        throw new IllegalStateException("GeekFM playlist not found");
+                    call(
+                            mc,
+                            new String[] {"func_147108_a", "displayGuiScreen"},
+                            new RadioMenu(null));
+                    break;
+                case 980:
+                    if (!NativeRadio.state.equals("playing") || NativeRadio.position < .5)
+                        throw new IllegalStateException(
+                                "Native MP3 output did not advance: "
+                                        + NativeRadio.state
+                                        + " "
+                                        + NativeRadio.error);
+                    shot("antagon-native-radio.png");
+                    NativeRadio.toggle();
+                    smokeRadioPosition = NativeRadio.position;
+                    break;
+                case 990:
+                    if (!NativeRadio.state.equals("paused")
+                            || Math.abs(NativeRadio.position - smokeRadioPosition) > .3)
+                        throw new IllegalStateException("Native radio did not pause");
+                    NativeRadio.toggle();
+                    NativeRadio.next(1);
+                    if (NativeRadio.track.id.equals(smokeRadioTrack))
+                        throw new IllegalStateException("Native next did not change track");
+                    break;
+                case 1100:
+                    if (!NativeRadio.state.equals("playing"))
+                        throw new IllegalStateException(
+                                "Native next track did not start: " + NativeRadio.error);
+                    NativeRadio.seek(35);
+                    break;
+                case 1160:
+                    if (!NativeRadio.state.equals("playing") || NativeRadio.position < 35)
+                        throw new IllegalStateException(
+                                "Native playlist seek failed: " + NativeRadio.position);
+                    for (RadioCatalog.Collection collection : NativeRadio.catalog.collections)
+                        if (collection.live() && collection.name.equalsIgnoreCase("GeekFM")) {
+                            NativeRadio.select(collection.id, 0);
+                            break;
+                        }
+                    break;
+                case 1320:
+                    RadioCatalog.Live live = NativeRadio.catalog.live(NativeRadio.collection);
+                    if (!NativeRadio.state.equals("playing")
+                            || live == null
+                            || !live.track.id.equals(NativeRadio.track.id)
+                            || Math.abs(live.offset - NativeRadio.position) > 1.5)
+                        throw new IllegalStateException(
+                                "Native live broadcast did not synchronize: "
+                                        + NativeRadio.state
+                                        + " "
+                                        + NativeRadio.error);
+                    System.out.println(
+                            "[ANTAGON TEST] Native MP3 playback, pause, next, seek and synchronized"
+                                    + " live radio work without launcher audio");
+                    NativeRadio.stop();
                     call(mc, new String[] {"func_71400_g", "shutdown"});
                     break;
             }
@@ -2226,7 +2360,11 @@ public class AntagonHud {
                 if (enabled("cps"))
                     panel(
                             "cps",
-                            ModuleRegistry.cpsText(left.size(), right.size(), opt("cps", "buttons"), flag("cps", "suffix")),
+                            ModuleRegistry.cpsText(
+                                    left.size(),
+                                    right.size(),
+                                    opt("cps", "buttons"),
+                                    flag("cps", "suffix")),
                             12,
                             36,
                             sw,
@@ -2291,6 +2429,8 @@ public class AntagonHud {
                     panel("ping", value, 110, 12, sw, sh);
                 }
                 if (enabled("radio")) radioOverlay(sw, sh);
+                if (enabled("armor")) armorOverlay(player, sw, sh);
+                if (enabled("potions")) potionOverlay(player, sw, sh);
                 if (enabled("combo"))
                     panel("combo", combo > 0 ? combo + " COMBO" : "SEM COMBO", 12, 252, sw, sh);
                 if (enabled("reach"))
@@ -2316,6 +2456,142 @@ public class AntagonHud {
         } catch (Throwable error) {
             report(error);
         }
+    }
+
+    private void armorOverlay(Object player, float sw, float sh) throws Exception {
+        List<StatusData.Armor> items =
+                StatusData.armor(player, flag("armor", "held"), menu != null && menu.editing);
+        if (items.isEmpty()) return;
+        boolean horizontal = opt("armor", "layout").equals("horizontal");
+        String mode = opt("armor", "durability");
+        float cell = 38, content = 0;
+        for (StatusData.Armor item : items)
+            content = Math.max(content, width(item.text(mode)) * .7f);
+        if (horizontal) cell = Math.max(cell, content + 8);
+        float w = horizontal ? items.size() * cell + 8 : Math.max(40, 34 + content + 6);
+        float h = horizontal ? (mode.equals("off") ? 27 : 40) : items.size() * 24 + 6;
+        place("armor", w, h, sw - w - 12, sh - h - 45, sw, sh);
+        try {
+            if (flag("armor", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
+            for (int i = 0; i < items.size(); i++) {
+                StatusData.Armor item = items.get(i);
+                float x = horizontal ? 4 + i * cell + (cell - 16) / 2 : 6;
+                float y = horizontal ? 5 : 5 + i * 24;
+                inventoryIcon(item.stack, x, y);
+                String value = item.text(mode);
+                int tint = item.maximum > 0 && item.remaining < item.maximum / 5f ? RED : WHITE;
+                float tx = horizontal ? 4 + i * cell + (cell - width(value) * .7f) / 2 : 31;
+                float ty = horizontal ? 24 : y + 2;
+                GL11.glPushMatrix();
+                GL11.glTranslatef(tx, ty, 0);
+                GL11.glScalef(.7f, .7f, 1);
+                text(value, 0, 0, tint);
+                GL11.glPopMatrix();
+            }
+        } finally {
+            GL11.glPopMatrix();
+        }
+    }
+
+    private void inventoryIcon(Object stack, float x, float y) throws Exception {
+        GL11.glPushMatrix();
+        GL11.glTranslatef(x, y, 0);
+        Class<?> state = Class.forName("net.minecraft.client.renderer.GlStateManager");
+        Class<?> helper = Class.forName("net.minecraft.client.renderer.RenderHelper");
+        try {
+            // PixelFont binds GL textures directly. Invalidate Minecraft's cached binding
+            // before RenderItem changes atlas filters, or it can modify the font texture.
+            invoke(state, null, new String[] {"func_179144_i", "bindTexture"}, 0);
+            invoke(state, null, new String[] {"func_179117_G", "resetColor"});
+            invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glEnable(0x803A); // GL12.GL_RESCALE_NORMAL
+            invoke(helper, null, new String[] {"func_74520_c", "enableGUIStandardItemLighting"});
+            Object renderer = call(mc, new String[] {"func_175599_af", "getRenderItem"});
+            call(
+                    renderer,
+                    new String[] {"func_180450_b", "renderItemAndEffectIntoGUI"},
+                    stack,
+                    0,
+                    0);
+        } finally {
+            invoke(helper, null, new String[] {"func_74518_a", "disableStandardItemLighting"});
+            invoke(state, null, new String[] {"func_179101_C", "disableRescaleNormal"});
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glPopMatrix();
+        }
+    }
+
+    private void potionOverlay(Object player, float sw, float sh) throws Exception {
+        List<StatusData.Potion> effects = StatusData.potions(player, menu != null && menu.editing);
+        if (effects.isEmpty()) return;
+        boolean names = flag("potions", "names");
+        float w = 75;
+        for (StatusData.Potion effect : effects)
+            if (names) w = Math.max(w, width(effect.name) * .75f + 39);
+        w = Math.min(w, 205);
+        float h = effects.size() * 30 + 6;
+        place("potions", w, h, sw - w - 12, 62, sw, sh);
+        try {
+            if (flag("potions", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
+            for (int i = 0; i < effects.size(); i++) {
+                StatusData.Potion effect = effects.get(i);
+                float y = 6 + i * 30;
+                if (effect.icon >= 0) potionIcon(effect.icon, 6, y + 2);
+                int tint =
+                        flag("potions", "blink")
+                                        && effect.duration < 200
+                                        && System.currentTimeMillis() / 500 % 2 == 0
+                                ? RED
+                                : WHITE;
+                GL11.glPushMatrix();
+                GL11.glTranslatef(31, y, 0);
+                GL11.glScalef(.75f, .75f, 1);
+                if (names) text(fit(effect.name, (w - 37) / .75f), 0, 0, WHITE);
+                text(StatusData.duration(effect.duration), 0, names ? 15 : 6, tint);
+                GL11.glPopMatrix();
+            }
+        } finally {
+            GL11.glPopMatrix();
+        }
+    }
+
+    private Object potionTexture;
+
+    private void potionIcon(int icon, float x, float y) throws Exception {
+        if (potionTexture == null)
+            potionTexture =
+                    Class.forName("net.minecraft.util.ResourceLocation")
+                            .getConstructor(String.class)
+                            .newInstance("textures/gui/container/inventory.png");
+        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        // Bind directly so the custom font's texture binding cannot invalidate Minecraft's cache.
+        Object texture =
+                call(textures, new String[] {"func_110581_b", "getTexture"}, potionTexture);
+        if (texture == null) {
+            call(textures, new String[] {"func_110577_a", "bindTexture"}, potionTexture);
+            texture = call(textures, new String[] {"func_110581_b", "getTexture"}, potionTexture);
+        }
+        int id =
+                ((Number) call(texture, new String[] {"func_110552_b", "getGlTextureId"}))
+                        .intValue();
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+        color(WHITE);
+        float u = (icon % 8 * 18) / 256f, v = (198 + icon / 8 * 18) / 256f, size = 18 / 256f;
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(u, v);
+        GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(u + size, v);
+        GL11.glVertex2f(x + 18, y);
+        GL11.glTexCoord2f(u + size, v + size);
+        GL11.glVertex2f(x + 18, y + 18);
+        GL11.glTexCoord2f(u, v + size);
+        GL11.glVertex2f(x, y + 18);
+        GL11.glEnd();
     }
 
     private String clockText() {
@@ -3287,6 +3563,444 @@ public class AntagonHud {
 
     private static String escapeField(String s) {
         return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private final class RadioMenu extends GuiScreen {
+        static final int W = 560, H = 340;
+        final GuiScreen parent;
+        final Map<String, float[]> hits = new LinkedHashMap<String, float[]>();
+        String mode = "radio", genre = "Todos", selected = "";
+        int listOffset, trackOffset;
+        float ms = 1, x0, y0;
+        List<String> genres = new ArrayList<String>();
+
+        RadioMenu(GuiScreen parent) {
+            this.parent = parent;
+            NativeRadio.open();
+            RadioCatalog.Collection current = NativeRadio.collection;
+            if (current != null) {
+                mode = current.mode;
+                selected = current.id;
+            }
+        }
+
+        public boolean func_73868_f() {
+            return false;
+        }
+
+        boolean inside(int x, int y, float[] r) {
+            return x >= r[0] && y >= r[1] && x < r[0] + r[2] && y < r[1] + r[3];
+        }
+
+        void small(String s, float x, float y, float size, int color) {
+            GL11.glPushMatrix();
+            GL11.glTranslatef(x, y, 0);
+            GL11.glScalef(size, size, 1);
+            text(s, 0, 0, color);
+            GL11.glPopMatrix();
+        }
+
+        void control(
+                String id,
+                String label,
+                float x,
+                float y,
+                float w,
+                float h,
+                int mx,
+                int my,
+                boolean accent,
+                boolean active) {
+            float[] r = {x, y, w, h};
+            boolean over = active && inside(mx, my, r);
+            rect(x, y, w, h, over ? 0xFFB91922 : accent ? 0xFF7C1B23 : 0xFF27282E);
+            outline(x, y, w, h, over ? RED : 0xFF45464E);
+            float fs = Math.min(.8f, (w - 6) / Math.max(1, width(label)));
+            small(
+                    label,
+                    x + (w - width(label) * fs) / 2,
+                    y + (h - 16 * fs) / 2,
+                    fs,
+                    active ? WHITE : 0xFF62646E);
+            if (active) hits.put(id, r);
+        }
+
+        void cover(String key, float x, float y, float size) throws Exception {
+            rect(x, y, size, size, 0xFF302127);
+            String art = NativeRadio.art(key);
+            image(
+                    art.isEmpty() ? "logo.png" : "file:" + art,
+                    x + (art.isEmpty() ? size * .15f : 0),
+                    y + (art.isEmpty() ? size * .15f : 0),
+                    art.isEmpty() ? size * .7f : size,
+                    art.isEmpty() ? size * .7f : size,
+                    0,
+                    0,
+                    1,
+                    1);
+        }
+
+        public void func_73863_a(int mx, int my, float partial) {
+            try {
+                ms = Math.min(1, Math.min((field_146294_l - 10f) / W, (field_146295_m - 10f) / H));
+                begin(ms);
+                int sw = (int) (field_146294_l / ms), sh = (int) (field_146295_m / ms);
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+                x0 = (sw - W) / 2f;
+                y0 = (sh - H) / 2f;
+                hits.clear();
+                rect(0, 0, sw, sh, 0xB0000000);
+                rect(x0, y0, W, H, 0xFC17181D);
+                outline(x0, y0, W, H, 0xFF41424B);
+                image("logo.png", x0 + 12, y0 + 9, 19, 19, 0, 0, 1, 1);
+                text("RÁDIO", x0 + 39, y0 + 10, WHITE);
+                control(
+                        "mode:radio",
+                        "AO VIVO",
+                        x0 + 152,
+                        y0 + 8,
+                        78,
+                        22,
+                        mx,
+                        my,
+                        mode.equals("radio"),
+                        true);
+                control(
+                        "mode:playlist",
+                        "PLAYLISTS",
+                        x0 + 236,
+                        y0 + 8,
+                        85,
+                        22,
+                        mx,
+                        my,
+                        mode.equals("playlist"),
+                        true);
+                control(
+                        "genre",
+                        "ESTILO: " + genre,
+                        x0 + 332,
+                        y0 + 8,
+                        151,
+                        22,
+                        mx,
+                        my,
+                        false,
+                        true);
+                control("refresh", "R", x0 + 491, y0 + 8, 23, 22, mx, my, false, true);
+                control("close", "X", x0 + 522, y0 + 8, 25, 22, mx, my, false, true);
+                rect(x0 + 12, y0 + 38, W - 24, 1, 0xFF33343D);
+                RadioCatalog catalog = NativeRadio.catalog;
+                RadioCatalog.Collection detail = null;
+                if (catalog == null)
+                    small(
+                            NativeRadio.catalogError.isEmpty()
+                                    ? "Carregando catálogo..."
+                                    : NativeRadio.catalogError,
+                            x0 + 16,
+                            y0 + 70,
+                            1,
+                            GRAY);
+                else {
+                    List<RadioCatalog.Collection> list = new ArrayList<RadioCatalog.Collection>();
+                    TreeSet<String> styles = new TreeSet<String>();
+                    styles.add("Todos");
+                    for (RadioCatalog.Collection c : catalog.collections)
+                        if (c.mode.equals(mode)) {
+                            styles.add(c.genre);
+                            if (genre.equals("Todos") || genre.equals(c.genre)) list.add(c);
+                        }
+                    genres = new ArrayList<String>(styles);
+                    if (!genres.contains(genre)) genre = "Todos";
+                    listOffset = Math.max(0, Math.min(listOffset, list.size() - 5));
+                    if (!list.isEmpty()
+                            && (catalog.collection(selected) == null
+                                    || !list.contains(catalog.collection(selected))))
+                        selected = list.get(0).id;
+                    for (int i = listOffset; i < Math.min(list.size(), listOffset + 5); i++) {
+                        RadioCatalog.Collection c = list.get(i);
+                        float y = y0 + 49 + (i - listOffset) * 43;
+                        rect(x0 + 12, y, 170, 39, c.id.equals(selected) ? 0xFF452128 : 0xFF22232A);
+                        if (c.id.equals(selected)) rect(x0 + 12, y, 2, 39, RED);
+                        cover(c.cover, x0 + 18, y + 4, 31);
+                        small(fit(c.name, 122 / .85f), x0 + 56, y + 3, .85f, WHITE);
+                        small(fit(c.genre, 120 / .7f), x0 + 56, y + 20, .7f, GRAY);
+                        hits.put("collection:" + c.id, new float[] {x0 + 12, y, 170, 39});
+                    }
+                    detail = catalog.collection(selected);
+                    if (detail != null && !list.isEmpty()) {
+                        cover(detail.cover, x0 + 197, y0 + 49, 60);
+                        small(fit(detail.name, 278), x0 + 268, y0 + 49, 1, WHITE);
+                        small(
+                                fit(
+                                        detail.genre + " · " + detail.trackIds.size() + " músicas",
+                                        340),
+                                x0 + 268,
+                                y0 + 70,
+                                .8f,
+                                GRAY);
+                        RadioCatalog.Live live = detail.live() ? catalog.live(detail) : null;
+                        boolean available =
+                                detail.live() ? live != null : !detail.trackIds.isEmpty();
+                        control(
+                                "play:" + detail.id,
+                                detail.live() ? "OUVIR AO VIVO" : "REPRODUZIR",
+                                x0 + 420,
+                                y0 + 91,
+                                125,
+                                21,
+                                mx,
+                                my,
+                                true,
+                                available);
+                        small(
+                                detail.live() ? "PROGRAMAÇÃO" : "MÚSICAS",
+                                x0 + 197,
+                                y0 + 122,
+                                .75f,
+                                GRAY);
+                        if (!available)
+                            small(
+                                    "Esta seleção ainda não tem músicas.",
+                                    x0 + 197,
+                                    y0 + 152,
+                                    .85f,
+                                    GRAY);
+                        trackOffset =
+                                Math.max(0, Math.min(trackOffset, detail.trackIds.size() - 5));
+                        for (int i = trackOffset;
+                                i < Math.min(detail.trackIds.size(), trackOffset + 5);
+                                i++) {
+                            RadioCatalog.Track t = catalog.tracks.get(detail.trackIds.get(i));
+                            if (t == null) continue;
+                            float y = y0 + 142 + (i - trackOffset) * 24;
+                            boolean playing =
+                                    NativeRadio.track != null && t.id.equals(NativeRadio.track.id);
+                            rect(x0 + 197, y, 348, 22, playing ? 0xFF422127 : 0xFF202127);
+                            small(
+                                    Integer.toString(i + 1),
+                                    x0 + 203,
+                                    y + 3,
+                                    .7f,
+                                    playing ? RED : GRAY);
+                            small(fit(t.title, 238 / .8f), x0 + 224, y, .8f, WHITE);
+                            small(fit(t.artist, 238 / .65f), x0 + 224, y + 11, .65f, GRAY);
+                            small(
+                                    StatusData.duration((int) (t.duration / 50)),
+                                    x0 + 509,
+                                    y + 3,
+                                    .7f,
+                                    GRAY);
+                            if (!detail.live())
+                                hits.put("track:" + i, new float[] {x0 + 197, y, 348, 22});
+                        }
+                        if (detail.trackIds.size() > 5)
+                            small(
+                                    (trackOffset + 1)
+                                            + "-"
+                                            + Math.min(trackOffset + 5, detail.trackIds.size())
+                                            + " / "
+                                            + detail.trackIds.size()
+                                            + "   Role para ver mais",
+                                    x0 + 197,
+                                    y0 + 264,
+                                    .65f,
+                                    GRAY);
+                        if (NativeRadio.track != null && NativeRadio.track.media.endsWith(".m4a"))
+                            control(
+                                    "launcher",
+                                    "ABRIR NO LAUNCHER",
+                                    x0 + 397,
+                                    y0 + 260,
+                                    148,
+                                    18,
+                                    mx,
+                                    my,
+                                    false,
+                                    true);
+                    }
+                }
+                rect(x0, y0 + 282, W, 58, 0xFF101116);
+                RadioCatalog.Track playing = NativeRadio.track;
+                RadioCatalog.Collection channel = NativeRadio.collection;
+                cover(
+                        playing != null && !playing.cover.isEmpty()
+                                ? playing.cover
+                                : channel == null ? "" : channel.cover,
+                        x0 + 12,
+                        y0 + 289,
+                        37);
+                small(
+                        fit(playing == null ? "Nenhuma música tocando" : playing.title, 184 / .85f),
+                        x0 + 58,
+                        y0 + 287,
+                        .85f,
+                        WHITE);
+                small(
+                        fit(playing == null ? "" : playing.artist, 184 / .7f),
+                        x0 + 58,
+                        y0 + 301,
+                        .7f,
+                        GRAY);
+                small(
+                        fit(channel == null ? "" : channel.name, 184 / .65f),
+                        x0 + 58,
+                        y0 + 316,
+                        .65f,
+                        GRAY);
+                boolean live = channel != null && channel.live();
+                control(
+                        "previous",
+                        "<<",
+                        x0 + 255,
+                        y0 + 289,
+                        27,
+                        24,
+                        mx,
+                        my,
+                        false,
+                        playing != null && !live);
+                control(
+                        "toggle",
+                        NativeRadio.wantPlay ? "||" : ">",
+                        x0 + 287,
+                        y0 + 287,
+                        38,
+                        28,
+                        mx,
+                        my,
+                        true,
+                        playing != null);
+                control(
+                        "next",
+                        ">>",
+                        x0 + 330,
+                        y0 + 289,
+                        27,
+                        24,
+                        mx,
+                        my,
+                        false,
+                        playing != null && !live);
+                small(
+                        live ? "AO VIVO" : StatusData.duration((int) (NativeRadio.position * 20)),
+                        x0 + 369,
+                        y0 + 293,
+                        .75f,
+                        live ? RED : GRAY);
+                control("less", "-", x0 + 427, y0 + 289, 20, 24, mx, my, false, true);
+                small(Math.round(NativeRadio.volume * 100) + "%", x0 + 456, y0 + 294, .8f, WHITE);
+                control("more", "+", x0 + 504, y0 + 289, 20, 24, mx, my, false, true);
+                control("stop", "X", x0 + 529, y0 + 289, 18, 24, mx, my, false, playing != null);
+                rect(x0 + 255, y0 + 322, 290, 2, 0xFF35363D);
+                if (playing != null) {
+                    rect(
+                            x0 + 255,
+                            y0 + 322,
+                            (float) Math.min(1, NativeRadio.position * 1000 / playing.duration)
+                                    * 290,
+                            2,
+                            RED);
+                    if (!live) hits.put("seek", new float[] {x0 + 255, y0 + 317, 290, 12});
+                }
+                String notice =
+                        !NativeRadio.error.isEmpty()
+                                ? NativeRadio.error
+                                : NativeRadio.state.equals("buffering")
+                                        ? "Carregando música..."
+                                        : NativeRadio.catalogError;
+                if (!notice.isEmpty())
+                    small(fit(notice, (W - 24) / .7f), x0 + 12, y0 + H - 13, .7f, GRAY);
+            } catch (Throwable e) {
+                report(e);
+            } finally {
+                end();
+            }
+        }
+
+        protected void func_73864_a(int mx, int my, int button) throws IOException {
+            if (button != 0) return;
+            mx = (int) (mx / ms);
+            my = (int) (my / ms);
+            for (Map.Entry<String, float[]> entry : hits.entrySet())
+                if (inside(mx, my, entry.getValue())) {
+                    String action = entry.getKey();
+                    try {
+                        if (action.equals("close"))
+                            call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+                        else if (action.equals("refresh")) NativeRadio.refreshAsync();
+                        else if (action.equals("launcher")) {
+                            NativeRadio.stop();
+                            requestLauncherView("radio");
+                        } else if (action.startsWith("mode:")) {
+                            mode = action.substring(5);
+                            selected = "";
+                            listOffset = trackOffset = 0;
+                            genre = "Todos";
+                        } else if (action.equals("genre") && !genres.isEmpty()) {
+                            genre = genres.get((genres.indexOf(genre) + 1) % genres.size());
+                            selected = "";
+                            listOffset = trackOffset = 0;
+                        } else if (action.startsWith("collection:")) {
+                            selected = action.substring(11);
+                            trackOffset = 0;
+                        } else if (action.startsWith("play:") || action.startsWith("track:")) {
+                            NativeRadio.select(
+                                    action.startsWith("play:") ? action.substring(5) : selected,
+                                    action.startsWith("track:")
+                                            ? Integer.parseInt(action.substring(6))
+                                            : 0);
+                            config.setProperty("radio", "true");
+                            save();
+                        } else if (action.equals("toggle")) NativeRadio.toggle();
+                        else if (action.equals("previous")) NativeRadio.next(-1);
+                        else if (action.equals("next")) NativeRadio.next(1);
+                        else if (action.equals("stop")) NativeRadio.stop();
+                        else if (action.equals("less"))
+                            NativeRadio.volume(Math.round(NativeRadio.volume * 100) - 5);
+                        else if (action.equals("more"))
+                            NativeRadio.volume(Math.round(NativeRadio.volume * 100) + 5);
+                        else if (action.equals("seek") && NativeRadio.track != null)
+                            NativeRadio.seek(
+                                    (mx - (x0 + 255)) / 290 * NativeRadio.track.duration / 1000);
+                    } catch (Exception e) {
+                        report(e);
+                    }
+                    return;
+                }
+        }
+
+        public void func_146274_d() throws IOException {
+            super.func_146274_d();
+            int delta = Mouse.getEventDWheel();
+            if (delta == 0) return;
+            float x =
+                    Mouse.getEventX()
+                            * (float) field_146294_l
+                            / ((Number) getDisplayWidth()).floatValue()
+                            / ms;
+            if (x < x0 + 190) listOffset = Math.max(0, listOffset - (delta > 0 ? 1 : -1));
+            else trackOffset = Math.max(0, trackOffset - (delta > 0 ? 1 : -1));
+        }
+
+        private Number getDisplayWidth() {
+            try {
+                return (Number) field(mc, "field_71443_c", "displayWidth");
+            } catch (Exception e) {
+                return field_146294_l;
+            }
+        }
+
+        protected void func_73869_a(char c, int key) throws IOException {
+            if (key == Keyboard.KEY_ESCAPE)
+                try {
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+                } catch (Exception e) {
+                    report(e);
+                }
+            else if (key == Keyboard.KEY_SPACE) NativeRadio.toggle();
+        }
     }
 
     /**

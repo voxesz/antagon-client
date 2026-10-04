@@ -38,6 +38,7 @@ const HOSTS = new Set([
   'libraries.minecraft.net',
   'resources.download.minecraft.net',
   'maven.minecraftforge.net',
+  'repo.maven.apache.org',
   'cdn.azul.com',
   'meta.fabricmc.net',
   'maven.fabricmc.net',

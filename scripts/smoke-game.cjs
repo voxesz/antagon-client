@@ -34,6 +34,10 @@ const screenshots = [
   'antagon-item-size-small.png',
   'antagon-item-size-default.png',
   'antagon-item-size-options.png',
+  'antagon-status-vertical.png',
+  'antagon-status-horizontal.png',
+  'antagon-legacy-block.png',
+  'antagon-status-editor.png',
 ];
 
 async function main() {
@@ -103,14 +107,33 @@ async function main() {
       throw Error('O Item Size não foi instalado no renderizador.');
     if (!logfile.includes('[ANTAGON TEST] Item Size renders the configured scale'))
       throw Error('O Item Size não passou na verificação dentro do jogo.');
+    if (!logfile.includes('[ANTAGON TEST] Armor and potion status read real equipment and effects'))
+      throw Error('Os status de armadura e poções falharam.');
+    if (
+      !logfile.includes('[ANTAGON] 1.7 Animations patch applied') ||
+      !logfile.includes('[ANTAGON TEST] 1.7 animations render and restore vanilla when disabled')
+    )
+      throw Error('As animações 1.7 não passaram na verificação dentro do jogo.');
     if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
+    if (process.env.ANTAGON_TEST_RADIO === '1') {
+      if (!logfile.includes('[ANTAGON TEST] Native MP3 playback, pause, next, seek and synchronized live radio work'))
+        throw Error('A reprodução de áudio dentro do jogo falhou.');
+      screenshots.push('antagon-native-radio.png');
+    }
     if (!logfile.includes('[ANTAGON TEST] Cosmetics and roster ready on world entry'))
       throw Error('Cosméticos não ficaram prontos na entrada do mundo.');
     if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
       throw Error('O botão da loja não abriu a loja dentro do jogo.');
     for (const name of screenshots) {
       if (!logfile.includes('[ANTAGON TEST] Screenshot saved ' + name)) throw Error('Etapa não executada: ' + name);
-      if ((await fs.stat(path.join(root, 'minecraft/screenshots', name))).size < 10000)
+      // Flat menu backgrounds compress much more than a world screenshot.
+      const png = await fs.readFile(path.join(root, 'minecraft/screenshots', name));
+      if (
+        png.length < 3000 ||
+        png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' ||
+        png.readUInt32BE(16) < 800 ||
+        png.readUInt32BE(20) < 400
+      )
         throw Error('Screenshot inválido: ' + name);
     }
     console.log('Jogo OK: HUD, menu, rolagem, categorias, editor e módulos. Perfil isolado em ' + root);

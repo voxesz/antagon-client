@@ -1,0 +1,9 @@
+JLayer 1.0.1 — JavaZOOM (1999–2008)
+Unmodified MP3 decoder distributed under the GNU Lesser General Public License.
+See JLayer-LICENSE.txt in this directory.
+Source: https://repo.maven.apache.org/maven2/javazoom/jlayer/1.0.1/jlayer-1.0.1-sources.jar
+Project: https://github.com/umjammer/jlayer
+
+The javazoom/jl classes and decoder resources in this JAR may be replaced with
+a compatible JLayer build. Antagon's Java sources and build script are available
+in the project's mod-src/ and scripts/build-mod.cjs directories.

@@ -20,6 +20,8 @@ const { DEFAULTS } = require('../electron/settings.cjs');
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await page.waitForFunction(() => document.querySelector('#version').textContent.length > 0);
+    assert.equal(await page.locator('[data-view="settings"]').count(), 0);
+    assert.equal(await page.locator('[data-view="radio"]').isVisible(), false);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => {
       const image = document.querySelector('#home-art');
@@ -68,6 +70,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.waitForFunction(async () => (await window.antagon.init()).settings.memory === 4);
     await page.selectOption('#game-version', 'latest-26');
     await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'Fabric + Sodium');
+    assert.equal(await page.locator('[data-view="radio"]').isVisible(), true);
     await page.click('#home-mods');
     assert.equal(await page.locator('#fabric-row').isVisible(), true);
     assert.equal(await page.locator('#optifine-row').isVisible(), false);
@@ -77,7 +80,8 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.selectOption('#game-version', '1.8.9');
     await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'OptiFine');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1040, 720));
-    await page.click('[data-view="settings"]');
+    await page.click('[data-view="play"]');
+    await page.click('#home-settings');
     await page.locator('#discord-presence').scrollIntoViewIfNeeded();
     assert.equal(await page.locator('#discord-presence').isChecked(), false);
     assert.equal(await page.locator('#discord-state').textContent(), 'Desativado');

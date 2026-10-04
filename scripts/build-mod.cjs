@@ -30,6 +30,14 @@ const DEPENDENCIES = [
     'https://libraries.minecraft.net/org/ow2/asm/asm-all/5.0.3/asm-all-5.0.3.jar',
     '4333508b8dd8ee72aa4e39afa713b3a74579b773',
   ],
+  [
+    'https://libraries.minecraft.net/com/google/code/gson/gson/2.2.4/gson-2.2.4.jar',
+    'a60a5e993c98c864010053cb901b7eab25306568',
+  ],
+  [
+    'https://repo.maven.apache.org/maven2/javazoom/jlayer/1.0.1/jlayer-1.0.1.jar',
+    '2bfef7a5a4c9af2184ff74b460b6d7d24349b98a',
+  ],
 ];
 const MOD_INFO = [
   {
@@ -81,6 +89,8 @@ async function main() {
   ]);
   const resources = path.join(classes, 'assets/antagon');
   fs.mkdirSync(resources, { recursive: true });
+  // Bundle the unmodified LGPL decoder; Gson is already supplied by Minecraft.
+  execFileSync(tool('jar'), ['xf', path.join(deps, 'jlayer-1.0.1.jar'), 'javazoom'], { cwd: classes });
   fs.cpSync(path.join(source, 'resources'), classes, { recursive: true });
   fs.copyFileSync(path.join(root, 'assets/PixelifySans.ttf'), path.join(resources, 'PixelifySans.ttf'));
   fs.copyFileSync(path.join(root, 'assets/PixelifySans-LICENSE.txt'), path.join(resources, 'FONT-LICENSE.txt'));

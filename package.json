@@ -1,7 +1,7 @@
 {
   "name": "antagon-client",
   "productName": "Antagon Client",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Client de Minecraft para macOS e Windows, com mods de PvP, cosméticos, amigos e rádio.",
   "main": "electron/main.cjs",
   "author": "Antagon Studio",
@@ -23,7 +23,8 @@
     "format:check": "prettier --check .",
     "test:discord": "node scripts/test-discord.cjs",
     "postpackage:mac": "node scripts/sign-mac.cjs && node scripts/copy-desktop-mac.cjs",
-    "test:client-fixes": "node scripts/test-client-fixes.cjs"
+    "test:client-fixes": "node scripts/test-client-fixes.cjs",
+    "test:native-audio": "node scripts/test-native-audio.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

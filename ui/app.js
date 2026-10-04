@@ -49,27 +49,25 @@ function setting(selector, key, read) {
   };
 }
 
-$$('[data-view]').forEach(
-  (tab) =>
-    (tab.onclick = () => {
-      $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === tab.dataset.view));
-      $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
-      if (tab.dataset.view === 'friends' && conversation.selected) {
-        unread.delete(conversation.selected);
-        renderCommunity();
-        renderMessages();
-      }
-      if (tab.dataset.view === 'store') refreshStore();
-      if (tab.dataset.view === 'play') refreshFeatured();
-      if (tab.dataset.view === 'radio') radio.open();
-      if (tab.dataset.view === 'admin') refreshAdminAccess();
-    }),
-);
-api.onOpenView((view) => {
-  if (!['settings', 'friends', 'store', 'admin', 'radio'].includes(view)) return;
-  const tab = $(`[data-view="${view}"]`);
-  if (tab && !tab.hidden) tab.click();
+function openView(view) {
+  if (!['play', 'settings', 'friends', 'store', 'admin', 'radio'].includes(view)) return;
+  if (view === 'admin' && !adminAccess.isAdmin) return;
+  $$('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.view === view));
+  $$('.view').forEach((panel) => panel.classList.toggle('active', panel.id === 'view-' + view));
+  if (view === 'friends' && conversation.selected) {
+    unread.delete(conversation.selected);
+    renderCommunity();
+    renderMessages();
+  }
+  if (view === 'store') refreshStore();
+  if (view === 'play') refreshFeatured();
+  if (view === 'radio') radio.open();
+  if (view === 'admin') refreshAdminAccess();
+}
+$$('[data-view]').forEach((tab) => {
+  tab.onclick = () => openView(tab.dataset.view);
 });
+api.onOpenView(openView);
 function renderProfile() {
   const microsoft = settings.mode === 'microsoft' && account,
     name = microsoft ? account.name : settings.nickname;
@@ -77,6 +75,8 @@ function renderProfile() {
   $('#home-account-name').textContent = name;
   $('#home-account-mode').textContent = microsoft ? 'Microsoft' : 'Offline';
   $('#profile-mode').textContent = microsoft ? 'Microsoft' : 'Offline';
+  $('#profile-open').title = name + ' · ' + (microsoft ? 'Microsoft' : 'Offline');
+  $('#profile-open').setAttribute('aria-label', 'Conta: ' + name);
   $('#profile-admin').hidden = !adminAccess.isAdmin;
   $('#avatar').textContent = name[0].toUpperCase();
   $('#nickname').value = settings.nickname;
@@ -203,10 +203,10 @@ function renderQuickSettings() {
   for (const id of ['#fullscreen', '#home-fullscreen']) $(id).checked = settings.fullscreen;
 }
 $('#home-account').onclick = () => $('#profile-open').click();
-$('#home-settings').onclick = () => $('.tab[data-view="settings"]').click();
+$('#home-settings').onclick = () => openView('settings');
 $('#home-store').onclick = () => $('.tab[data-view="store"]').click();
 $('#home-mods').onclick = () => {
-  $('.tab[data-view="settings"]').click();
+  openView('settings');
   $(settings.gameVersion === 'latest-26' ? '#fabric-row' : '#optifine-row').scrollIntoView({ block: 'center' });
 };
 setting('#share-server', 'shareServer', (input) => input.checked);
@@ -261,6 +261,8 @@ async function checkUpdate() {
   updateStatus = await api.checkUpdate().catch(() => ({ status: 'offline' }));
   $('#update').className = updateStatus.status === 'available' ? 'update' : 'update-status';
   $('#update').textContent = UPDATE_LABEL[updateStatus.status](updateStatus);
+  $('#update').title = $('#update').textContent;
+  $('#update').setAttribute('aria-label', $('#update').textContent);
 }
 $('#update').onclick = async () => {
   if (updateStatus?.status !== 'available') return checkUpdate();
@@ -1073,6 +1075,7 @@ function renderVersion(version, installed = false) {
 
 function renderHomeMods() {
   const modern = settings?.gameVersion === 'latest-26';
+  $('[data-view="radio"]').hidden = !modern;
   $('#home-mods-name').textContent = modern ? 'Fabric + Sodium' : 'OptiFine';
   $('#home-mods-state').textContent = modern ? 'Mods compatíveis' : optifineFile ? 'Instalado' : 'Configurar';
 }

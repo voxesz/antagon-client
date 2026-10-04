@@ -28,7 +28,10 @@ function wav(seconds = 20) {
 (async () => {
   const root = path.resolve(__dirname, '..');
   const profile = await fs.mkdtemp(path.join(root, 'build/radio-test-'));
-  await fs.writeFile(path.join(profile, 'settings.json'), JSON.stringify({ ...DEFAULTS, discordPresence: false }));
+  await fs.writeFile(
+    path.join(profile, 'settings.json'),
+    JSON.stringify({ ...DEFAULTS, gameVersion: 'latest-26', discordPresence: false }),
+  );
   await fs.writeFile(path.join(profile, 'test.wav'), wav(2));
   const app = await electron.launch({ args: [root], env: { ...process.env, ANTAGON_TEST_ROOT: profile } });
   const page = await app.firstWindow();

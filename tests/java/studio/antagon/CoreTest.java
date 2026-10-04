@@ -77,6 +77,10 @@ public final class CoreTest {
         check("7".equals(ModuleRegistry.cpsText(7, 4, "esquerdo", false)));
         check("4 CPS".equals(ModuleRegistry.cpsText(7, 4, "direito", true)));
         check("4".equals(ModuleRegistry.cpsText(7, 4, "direito", false)));
+        check("0:00".equals(StatusData.duration(-20)));
+        check("1:05".equals(StatusData.duration(1300)));
+        check("II".equals(StatusData.amplifier(2)));
+        check("11".equals(StatusData.amplifier(11)));
         System.out.println("Java OK: reflection, menu bounds and all CPS display modes.");
     }
 }

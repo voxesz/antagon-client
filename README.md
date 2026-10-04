@@ -26,6 +26,10 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 | --- |
 | ![Editor de HUD](docs/hud-editor.png) |
 
+| Menu do jogo | Rádio no Minecraft 1.8.9 |
+| --- | --- |
+| ![Menu do jogo](docs/game-pause-menu.png) | ![Rádio no jogo](docs/in-game-radio.png) |
+
 ## Recursos
 
 **Launcher**
@@ -35,7 +39,8 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Instala o jogo numa pasta isolada, preservando outros launchers, mundos e texturas
 - Suporte a macOS Apple Silicon e Intel, com Java e bibliotecas nativas adequados à arquitetura
 - Windows 10/11 x64, com instalação automática do Java necessário para cada versão
-- Tela inicial com imagem personalizável, configurações de jogo e cosméticos em destaque
+- Tela inicial com imagem personalizável, navegação centralizada, configurações de jogo e cosméticos em destaque
+- Configurações completas pela engrenagem ao lado do botão de jogar
 - Instalação guiada do OptiFine para 1.8.9; Fabric e Sodium no perfil 26.x
 - Amigos: adicionar pelo nick, ver o que cada um está jogando, entrar no mesmo servidor e conversar (conta Microsoft)
 - Atualização automática pelas Releases do GitHub
@@ -46,17 +51,22 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Tag Antagon no chat, logo ao lado do ping no tab (dourada para admins), e cosméticos visíveis para outros jogadores com
   o client e sessão de comunidade ativa
 
-**Mods no Minecraft 1.8.9** (configuráveis no menu do client). O botão Antagon no menu inicial abre as configurações do launcher. No Esc,
-os atalhos acima de **Abrir para LAN** abrem Configurações, Amigos e Loja; administradores também veem Admin.
+**Mods no Minecraft 1.8.9** (configuráveis em **Opções Antagon**, no menu inicial ou no Esc).
+Os menus usam botões contornados com preenchimento vermelho ao passar o mouse, logo pixelada com movimento
+e partículas acompanhando o cursor. Os atalhos abrem Amigos, Loja e Rádio; administradores também veem Admin.
 
 O menu usa categorias, rolagem suave e altura ajustada à janela. Cabeçalho e rodapé ficam fixos; use a roda do mouse,
 as setas ou Page Up/Page Down para explorar a lista. As opções e o editor de HUD continuam acessíveis em qualquer tamanho de interface.
 
-A **Rádio Antagon** usa o player do próprio launcher, no macOS e no Windows. A aba **Rádio** oferece estações
-ao vivo sincronizadas pelo servidor e playlists com reprodução individual. No jogo 1.8.9, o módulo Rádio mostra
-música, artista, capa e progresso; **Rádio → Abrir rádio**, no menu de mods, abre o catálogo do launcher. Os atalhos
-de pausa, anterior, próxima e volume controlam esse mesmo player. Anterior, próxima e busca ficam disponíveis
-nas playlists; ao voltar a ouvir uma rádio, a reprodução acompanha a transmissão atual.
+A **Rádio Antagon** toca diretamente no Minecraft **1.8.9**, com catálogo, capas, estilos, rádios ao vivo e playlists.
+Abra pelo botão de nota musical no menu inicial ou no Esc, ou por **Rádio → Abrir rádio** nas opções dos mods.
+O player decodifica MP3, OGG e WAV em uma thread separada e mantém até 256 MB de áudio em cache.
+A GeekFM usa MP3. O HUD mostra música, artista, capa e progresso. Pausa, anterior, próxima, busca e volume
+funcionam nas playlists; nas rádios, retomar volta ao ponto atual da transmissão, sincronizado pelo relógio do servidor.
+O áudio nativo funciona independentemente do player do launcher.
+
+O perfil **26.x** mantém a aba **Rádio** no launcher. M4A também continua disponível no player do launcher;
+ao selecionar uma faixa desse formato dentro do jogo, há um botão para abrir esse player.
 
 Administradores usam **Admin → Rádio** para enviar MP3, M4A, OGG ou WAV (até 50 MB / 1 hora), escolher capas,
 criar rádios e playlists e reordenar suas filas. Para ampliar o catálogo, envie músicas autorizadas, adicione-as
@@ -70,13 +80,21 @@ guarda apenas o catálogo e a programação. Nenhuma chave de administrador é d
 | Keystrokes | Combo Counter | Perspective (freelook) |
 | Coordenadas, Relógio | Hitbox | Chat (horário, empilhar, tamanho) |
 | Rádio Antagon | Hit Color | No Titles |
-| | Crosshair, Item Size | No Hurt Cam |
+| Armor Status, Potion Status | Crosshair, Item Size, 1.7 Animations | No Hurt Cam |
 
 Todos os módulos do HUD podem ser arrastados e redimensionados pelos quatro cantos no editor.
 
 **Item Size** ajusta o tamanho dos itens na mão em primeira pessoa, incluindo espadas, de **25% a 150%**.
 Ative o módulo e use **Tamanho na mão**; o valor inicial é 70%. Desativar restaura o tamanho normal.
 O ajuste é visual, preserva os ícones do inventário e funciona com OptiFine.
+
+**Armor Status** mostra armadura e, opcionalmente, o item na mão. Oferece disposição vertical ou horizontal,
+durabilidade em porcentagem ou valores restantes e opção de fundo. **Potion Status** mostra ícones, nomes,
+níveis e duração dos efeitos ativos, com aviso visual nos últimos dez segundos. Ambos têm posição e tamanho
+ajustáveis no editor de HUD.
+
+**1.7 Animations** adiciona movimentos clássicos em primeira pessoa ao bloquear/usar a espada, arco e comida/bebida,
+com controles separados. As alterações são visuais; o módulo não modifica ataques ou envia pacotes de combate.
 
 O conjunto de mods próprios do Antagon, incluindo Item Size e cosméticos no jogo, é do perfil **1.8.9**.
 O perfil **26.x** usa Fabric e mods compatíveis; ainda não inclui o HUD próprio do Antagon.
@@ -112,12 +130,15 @@ npm start
 | `npm run test:ui` | Valida a home, navegação, configurações e administração |
 | `npm run test:client-fixes` | Testa mensagens, edição, exclusão e destaques dos cosméticos |
 | `npm run test:radio` | Valida o player de rádios e playlists |
+| `npm run test:native-audio` | Testa os decodificadores WAV e OGG com áudio local e volume zero (após preparar o perfil de teste do jogo) |
 | `npm run test:game` | Abre o jogo, testa menu, editor e mods e salva screenshots |
 | `npm run package:mac` | Compila o mod e gera o `.app` em `release/` |
 | `npm run package:win` | Compila o mod e gera a versão Windows x64 em `release/` |
 | `npm run format` | Formata o código (Prettier) |
 
 O build de macOS também atualiza uma cópia do app na Área de Trabalho.
+Use `ANTAGON_TEST_OPTIFINE=1 ANTAGON_TEST_ADMIN=1 ANTAGON_TEST_RADIO=1 npm run test:game` no macOS/Linux
+para incluir OptiFine, menus de admin e reprodução da GeekFM no teste. A etapa de rádio usa a rede e roda sem som.
 
 ## Discord
 
@@ -181,5 +202,7 @@ um stub mínimo de `GuiScreen`.
 - Código: [MIT](LICENSE)
 - Pixelify Sans: SIL Open Font License ([assets/PixelifySans-LICENSE.txt](assets/PixelifySans-LICENSE.txt))
 - Natives LWJGL/JInput arm64: BSD ([assets/natives-arm64/SOURCES.txt](assets/natives-arm64/SOURCES.txt))
+- JLayer 1.0.1: LGPL, incluído sem alterações ([licença](mod-src/resources/assets/antagon/JLayer-LICENSE.txt),
+  [fonte e instruções de substituição](mod-src/resources/assets/antagon/THIRD-PARTY.txt))
 
 Projeto independente, não afiliado à Mojang ou à Microsoft. Minecraft é marca registrada da Mojang Synergies AB.
