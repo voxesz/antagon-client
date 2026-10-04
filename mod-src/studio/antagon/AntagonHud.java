@@ -48,9 +48,7 @@ import javax.imageio.ImageIO;
         acceptableRemoteVersions = "*")
 public class AntagonHud {
     private static final int RED = 0xFFEE1515, WHITE = 0xFFF0EEE8, GRAY = 0xFF8A8883;
-    private static final int MENU_BUTTON_ID = 0xA71A;
-    private static final int SETTINGS_BUTTON_ID = 0xA71B,
-            FRIENDS_BUTTON_ID = 0xA71C,
+    private static final int FRIENDS_BUTTON_ID = 0xA71C,
             STORE_BUTTON_ID = 0xA71D,
             ADMIN_BUTTON_ID = 0xA71E,
             RADIO_BUTTON_ID = 0xA71F;
@@ -329,10 +327,14 @@ public class AntagonHud {
             boolean paused = gui.getClass().getName().endsWith("GuiIngameMenu");
             @SuppressWarnings("unchecked")
             List<Object> buttons = (List<Object>) field(event, "buttonList");
-            int settings = paused ? SETTINGS_BUTTON_ID : MENU_BUTTON_ID;
             for (Object button : buttons)
-                if (((Number) field(button, "field_146127_k", "id")).intValue() == settings) return;
-            buttons.add(newButton(settings, 0, 0, 100, "Opções Antagon"));
+                if (((Number) field(button, "field_146127_k", "id")).intValue()
+                        == FRIENDS_BUTTON_ID) return;
+            if (!paused) {
+                for (Iterator<Object> iterator = buttons.iterator(); iterator.hasNext(); )
+                    if (((Number) field(iterator.next(), "field_146127_k", "id")).intValue() == 14)
+                        iterator.remove();
+            }
             buttons.add(newButton(FRIENDS_BUTTON_ID, 0, 0, 20, ""));
             buttons.add(newButton(STORE_BUTTON_ID, 0, 0, 20, ""));
             buttons.add(newButton(RADIO_BUTTON_ID, 0, 0, 20, ""));
@@ -341,7 +343,6 @@ public class AntagonHud {
                     gui,
                     buttons,
                     paused,
-                    settings,
                     FRIENDS_BUTTON_ID,
                     STORE_BUTTON_ID,
                     ADMIN_BUTTON_ID,
@@ -381,7 +382,6 @@ public class AntagonHud {
                     ((Number) field(event, "mouseX")).intValue(),
                     ((Number) field(event, "mouseY")).intValue(),
                     paused,
-                    paused ? SETTINGS_BUTTON_ID : MENU_BUTTON_ID,
                     FRIENDS_BUTTON_ID,
                     STORE_BUTTON_ID,
                     ADMIN_BUTTON_ID,
@@ -402,8 +402,7 @@ public class AntagonHud {
             Object button = field(event, "button");
             int id = ((Number) field(button, "field_146127_k", "id")).intValue();
             GuiScreen screen = (GuiScreen) field(event, "gui");
-            if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
-            else if (id == RADIO_BUTTON_ID)
+            if (id == RADIO_BUTTON_ID)
                 call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new RadioMenu(screen));
             else if (id == FRIENDS_BUTTON_ID || id == STORE_BUTTON_ID)
                 call(

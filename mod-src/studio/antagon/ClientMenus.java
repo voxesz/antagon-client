@@ -34,7 +34,6 @@ final class ClientMenus {
             Object gui,
             List<Object> buttons,
             boolean paused,
-            int settings,
             int friends,
             int store,
             int admin,
@@ -48,22 +47,23 @@ final class ClientMenus {
         if (paused) {
             row(rows, left, 4);
             row(rows, left, 5, 6);
-            row(rows, left, 0, settings);
-            row(rows, left, friends, store, radio, admin);
+            row(rows, left, 0);
             row(rows, left, 7);
             row(rows, left, 12);
         } else {
             row(rows, left, 1);
             row(rows, left, 2);
-            row(rows, left, 14);
-            row(rows, left, 0, settings);
+            row(rows, left, 0);
             row(rows, left, 6, 5);
-            row(rows, left, friends, store, radio, admin);
         }
+        List<List<Object>> shortcuts = new ArrayList<List<Object>>();
+        row(shortcuts, left, friends, store, radio, admin);
         Object quit = left.remove(paused ? 1 : 4);
         for (Object button : left.values()) rows.add(Collections.singletonList(button));
         if (quit != null) rows.add(Collections.singletonList(quit));
-        float total = 94 + rows.size() * 26;
+        rows.addAll(shortcuts);
+        float header = paused ? 94 : 78;
+        float total = header + rows.size() * 26 + 4;
         scale = Math.min(1f, Math.min((width - 40) / 310f, (height - 42) / total));
         scale = Math.max(.45f, scale);
         float top = (height - total * scale) / 2;
@@ -76,7 +76,7 @@ final class ClientMenus {
             int gap = Math.max(3, Math.round(5 * scale));
             int w = icons ? buttonHeight : (buttonWidth - gap * (row.size() - 1)) / row.size();
             int x = icons ? (width - row.size() * w - gap * (row.size() - 1)) / 2 : startX;
-            int y = Math.round(top + (94 + i * 26) * scale);
+            int y = Math.round(top + (header + i * 26 + (icons ? 4 : 0)) * scale);
             for (Object button : row) {
                 setField(button, x, "field_146128_h", "xPosition");
                 setField(button, y, "field_146129_i", "yPosition");
@@ -111,13 +111,12 @@ final class ClientMenus {
             int mx,
             int my,
             boolean paused,
-            int settings,
             int friends,
             int store,
             int admin,
             int radio)
             throws Exception {
-        if (gui != current) layout(gui, buttons, paused, settings, friends, store, admin, radio);
+        if (gui != current) layout(gui, buttons, paused, friends, store, admin, radio);
         int width = ((Number) field(gui, "field_146294_l", "width")).intValue();
         int height = ((Number) field(gui, "field_146295_m", "height")).intValue();
         long now = System.nanoTime();
@@ -164,8 +163,6 @@ final class ClientMenus {
                 int alpha = (int) (110 * (1 - p[2] / .7f));
                 rect(p[0], p[1], 1.5f, 1.5f, (alpha << 24) | 0xEE1515);
             }
-            image("logo", 14, 12, 15, 15, WHITE);
-            label("ANTAGON", 35, 13, .7f, WHITE);
             GL11.glPushMatrix();
             GL11.glTranslatef(
                     width / 2f + pointerX * 6 * scale,
@@ -178,13 +175,13 @@ final class ClientMenus {
                 image("logo", -size / 2 + i * scale, -size / 2 + i * scale, size, size, 0xFF5D1016);
             image("logo", -size / 2, -size / 2, size, size, WHITE);
             GL11.glPopMatrix();
-            String title = paused ? "JOGO PAUSADO" : "MINECRAFT";
-            label(
-                    title,
-                    (width - font.width(title) * .8f * scale) / 2,
-                    logoY + 73 * scale,
-                    .8f * scale,
-                    WHITE);
+            if (paused)
+                label(
+                        "JOGO PAUSADO",
+                        (width - font.width("JOGO PAUSADO") * .8f * scale) / 2,
+                        logoY + 73 * scale,
+                        .8f * scale,
+                        WHITE);
             String tooltip = null;
             for (Object button : buttons) {
                 if (!Boolean.TRUE.equals(field(button, "field_146125_m", "visible"))) continue;
@@ -207,35 +204,27 @@ final class ClientMenus {
                 String icon =
                         id == friends
                                 ? "chat"
-                                : id == store ? "store" : id == admin ? "admin" : null;
-                if (id == radio) {
-                    float cx = x + w / 2, cy = y + h / 2;
-                    rect(cx, cy - 5 * scale, 2 * scale, 9 * scale, WHITE);
-                    rect(cx, cy - 5 * scale, 5 * scale, 2 * scale, WHITE);
-                    disc(cx - 1.5f * scale, cy + 4 * scale, 3 * scale, WHITE);
-                    if (over) tooltip = "Rádio";
-                } else if (icon != null) {
+                                : id == store
+                                        ? "store"
+                                        : id == radio ? "radio" : id == admin ? "admin" : null;
+                if (icon != null) {
                     float iconSize = h - 6 * scale;
-                    image(
-                            icon,
-                            x + (w - iconSize) / 2,
-                            y + (h - iconSize) / 2,
-                            iconSize,
-                            iconSize,
-                            WHITE);
-                    if (over) tooltip = id == friends ? "Amigos" : id == store ? "Loja" : "Admin";
+                    flatIcon(icon, x + (w - iconSize) / 2, y + (h - iconSize) / 2, iconSize, WHITE);
+                    if (over)
+                        tooltip =
+                                id == friends
+                                        ? "Amigos"
+                                        : id == store ? "Loja" : id == radio ? "Rádio" : "Admin";
                 } else {
                     String text =
-                            id == settings
-                                    ? "OPÇÕES ANTAGON"
-                                    : !paused && id == 5
-                                            ? "IDIOMA"
-                                            : String.valueOf(
-                                                            field(
-                                                                    button,
-                                                                    "field_146126_j",
-                                                                    "displayString"))
-                                                    .toUpperCase(Locale.ROOT);
+                            !paused && id == 5
+                                    ? "IDIOMA"
+                                    : String.valueOf(
+                                                    field(
+                                                            button,
+                                                            "field_146126_j",
+                                                            "displayString"))
+                                            .toUpperCase(Locale.ROOT);
                     float fs = Math.min(.85f * scale, (w - 10) / Math.max(1, font.width(text)));
                     label(
                             text,
@@ -264,6 +253,49 @@ final class ClientMenus {
         GL11.glScalef(size, size, 1);
         font.draw(text, 0, 0, color);
         GL11.glPopMatrix();
+    }
+
+    /** Flat, single-color shortcut icons drawn in the same coordinate system as the borders. */
+    private static void flatIcon(String name, float x, float y, float size, int tint) {
+        GL11.glPushMatrix();
+        GL11.glTranslatef(x, y, 0);
+        GL11.glScalef(size / 16, size / 16, 1);
+        try {
+            if (name.equals("chat")) {
+                stroke(tint, 2, 2, 14, 2, 14, 11, 7, 11, 3, 14, 3, 11, 2, 11, 2, 2);
+                for (int i = 0; i < 3; i++) disc(5 + i * 3, 6.5f, .65f, tint);
+            } else if (name.equals("store")) {
+                stroke(tint, 4, 5, 12, 5, 13, 14, 3, 14, 4, 5);
+                stroke(tint, 6, 6, 6, 3, 7, 2, 9, 2, 10, 3, 10, 6);
+            } else if (name.equals("radio")) {
+                stroke(tint, 6, 12, 6, 4, 13, 2, 13, 10);
+                disc(4.3f, 12, 2, tint);
+                disc(11.3f, 10, 2, tint);
+            } else if (name.equals("admin")) {
+                stroke(tint, 2, 4, 5, 7, 8, 2, 11, 7, 14, 4, 13, 12, 3, 12, 2, 4);
+                stroke(tint, 3, 14, 13, 14);
+            }
+        } finally {
+            GL11.glPopMatrix();
+        }
+    }
+
+    private static void stroke(int tint, float... points) {
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        color(tint);
+        GL11.glBegin(GL11.GL_QUADS);
+        for (int i = 2; i < points.length; i += 2) {
+            float ax = points[i - 2], ay = points[i - 1], bx = points[i], by = points[i + 1];
+            float length = (float) Math.hypot(bx - ax, by - ay);
+            if (length == 0) continue;
+            float nx = -(by - ay) / length * .55f, ny = (bx - ax) / length * .55f;
+            GL11.glVertex2f(ax + nx, ay + ny);
+            GL11.glVertex2f(bx + nx, by + ny);
+            GL11.glVertex2f(bx - nx, by - ny);
+            GL11.glVertex2f(ax - nx, ay - ny);
+        }
+        GL11.glEnd();
+        for (int i = 0; i < points.length; i += 2) disc(points[i], points[i + 1], .55f, tint);
     }
 
     private void image(String name, float x, float y, float w, float h, int tint) throws Exception {

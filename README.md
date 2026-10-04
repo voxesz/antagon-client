@@ -51,9 +51,10 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Tag Antagon no chat, logo ao lado do ping no tab (dourada para admins), e cosméticos visíveis para outros jogadores com
   o client e sessão de comunidade ativa
 
-**Mods no Minecraft 1.8.9** (configuráveis em **Opções Antagon**, no menu inicial ou no Esc).
+**Mods no Minecraft 1.8.9** (configuráveis no menu de mods dentro do jogo).
 Os menus usam botões contornados com preenchimento vermelho ao passar o mouse, logo pixelada com movimento
-e partículas acompanhando o cursor. Os atalhos abrem Amigos, Loja e Rádio; administradores também veem Admin.
+e partículas acompanhando o cursor. Abaixo do botão de sair, os atalhos com ícones planos abrem Amigos, Loja e Rádio;
+administradores também veem Admin.
 
 O menu usa categorias, rolagem suave e altura ajustada à janela. Cabeçalho e rodapé ficam fixos; use a roda do mouse,
 as setas ou Page Up/Page Down para explorar a lista. As opções e o editor de HUD continuam acessíveis em qualquer tamanho de interface.
