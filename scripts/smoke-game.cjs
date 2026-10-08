@@ -10,6 +10,7 @@ const installed = path.join(
   process.platform === 'win32' ? process.env.APPDATA : path.join(os.homedir(), 'Library/Application Support'),
   'Antagon Client',
 );
+const inventoryOnly = process.env.ANTAGON_TEST_INVENTORY === '1';
 const screenshots = [
   'antagon-title-buttons.png',
   'antagon-pause-buttons.png',
@@ -38,7 +39,18 @@ const screenshots = [
   'antagon-status-horizontal.png',
   'antagon-legacy-block.png',
   'antagon-status-editor.png',
-];
+  'antagon-inventory-world.png',
+  'antagon-inventory-survival.png',
+  'antagon-inventory-no-armor.png',
+  'antagon-inventory-creative.png',
+  'antagon-inventory-reopened.png',
+  'antagon-inventory-return.png',
+].filter(
+  (name) =>
+    !inventoryOnly ||
+    name.startsWith('antagon-inventory-') ||
+    (name.startsWith('antagon-status-') && !name.endsWith('-editor.png')),
+);
 
 async function main() {
   for (const directory of ['metadata', 'runtime', 'libraries', 'assets', 'minecraft/versions']) {
@@ -97,33 +109,37 @@ async function main() {
       /\[ANTAGON TEST\] (?:java\.|.*Exception)/.test(logfile)
     )
       throw Error('O teste do jogo não terminou sem erros.');
-    if (withOptifine && !logfile.includes('[ANTAGON] OptiFine cape bridge active'))
-      throw Error('A capa Antagon não substituiu a textura da OptiFine.');
-    if (withOptifine && !logfile.includes('[ANTAGON] Player render cape bridge active'))
-      throw Error('A capa Antagon não foi aplicada na renderização do jogador.');
-    if (!logfile.includes('[ANTAGON] Menu icons rendered'))
-      throw Error('Os ícones Antagon não apareceram nos botões do jogo.');
-    if (!logfile.includes('[ANTAGON] Item Size patch applied'))
-      throw Error('O Item Size não foi instalado no renderizador.');
-    if (!logfile.includes('[ANTAGON TEST] Item Size renders the configured scale'))
-      throw Error('O Item Size não passou na verificação dentro do jogo.');
-    if (!logfile.includes('[ANTAGON TEST] Armor and potion status read real equipment and effects'))
-      throw Error('Os status de armadura e poções falharam.');
-    if (
-      !logfile.includes('[ANTAGON] 1.7 Animations patch applied') ||
-      !logfile.includes('[ANTAGON TEST] 1.7 animations render and restore vanilla when disabled')
-    )
-      throw Error('As animações 1.7 não passaram na verificação dentro do jogo.');
-    if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
-    if (process.env.ANTAGON_TEST_RADIO === '1') {
-      if (!logfile.includes('[ANTAGON TEST] Native MP3 playback, pause, next, seek and synchronized live radio work'))
-        throw Error('A reprodução de áudio dentro do jogo falhou.');
-      screenshots.push('antagon-native-radio.png');
+    if (!logfile.includes('[ANTAGON TEST] Inventory backgrounds preserve the world with armor and potion HUDs'))
+      throw Error('O cenário deixou de aparecer atrás do inventário.');
+    if (!inventoryOnly) {
+      if (withOptifine && !logfile.includes('[ANTAGON] OptiFine cape bridge active'))
+        throw Error('A capa Antagon não substituiu a textura da OptiFine.');
+      if (withOptifine && !logfile.includes('[ANTAGON] Player render cape bridge active'))
+        throw Error('A capa Antagon não foi aplicada na renderização do jogador.');
+      if (!logfile.includes('[ANTAGON] Menu icons rendered'))
+        throw Error('Os ícones Antagon não apareceram nos botões do jogo.');
+      if (!logfile.includes('[ANTAGON] Item Size patch applied'))
+        throw Error('O Item Size não foi instalado no renderizador.');
+      if (!logfile.includes('[ANTAGON TEST] Item Size renders the configured scale'))
+        throw Error('O Item Size não passou na verificação dentro do jogo.');
+      if (!logfile.includes('[ANTAGON TEST] Armor and potion status read real equipment and effects'))
+        throw Error('Os status de armadura e poções falharam.');
+      if (
+        !logfile.includes('[ANTAGON] 1.7 Animations patch applied') ||
+        !logfile.includes('[ANTAGON TEST] 1.7 animations render and restore vanilla when disabled')
+      )
+        throw Error('As animações 1.7 não passaram na verificação dentro do jogo.');
+      if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
+      if (process.env.ANTAGON_TEST_RADIO === '1') {
+        if (!logfile.includes('[ANTAGON TEST] Native MP3 playback, pause, next, seek and synchronized live radio work'))
+          throw Error('A reprodução de áudio dentro do jogo falhou.');
+        screenshots.push('antagon-native-radio.png');
+      }
+      if (!logfile.includes('[ANTAGON TEST] Cosmetics and roster ready on world entry'))
+        throw Error('Cosméticos não ficaram prontos na entrada do mundo.');
+      if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
+        throw Error('O botão da loja não abriu a loja dentro do jogo.');
     }
-    if (!logfile.includes('[ANTAGON TEST] Cosmetics and roster ready on world entry'))
-      throw Error('Cosméticos não ficaram prontos na entrada do mundo.');
-    if (!logfile.includes('[ANTAGON TEST] Store button opened the in-game store'))
-      throw Error('O botão da loja não abriu a loja dentro do jogo.');
     for (const name of screenshots) {
       if (!logfile.includes('[ANTAGON TEST] Screenshot saved ' + name)) throw Error('Etapa não executada: ' + name);
       // Flat menu backgrounds compress much more than a world screenshot.
@@ -136,7 +152,13 @@ async function main() {
       )
         throw Error('Screenshot inválido: ' + name);
     }
-    console.log('Jogo OK: HUD, menu, rolagem, categorias, editor e módulos. Perfil isolado em ' + root);
+    console.log(
+      (inventoryOnly
+        ? 'Inventário OK: cenário visível com armadura, poções e chat.'
+        : 'Jogo OK: HUD, menu, rolagem, categorias, editor e módulos.') +
+        ' Perfil isolado em ' +
+        root,
+    );
   } finally {
     clearTimeout(timeout);
   }

@@ -1144,6 +1144,23 @@ public class AntagonHud {
                 System.out.println("[ANTAGON TEST] Started local world");
             }
             if (field(mc, "field_71439_g", "thePlayer") == null) return;
+            if ("1".equals(System.getenv("ANTAGON_TEST_INVENTORY"))) {
+                if (worldTicks == 40) {
+                    Object inventory =
+                            field(
+                                    field(mc, "field_71439_g", "thePlayer"),
+                                    "field_71071_by",
+                                    "inventory");
+                    ((Object[]) field(inventory, "field_70462_a", "mainInventory"))[0] =
+                            StatusData.item(276);
+                    setField(inventory, 0, "field_70461_c", "currentItem");
+                    config.setProperty("fullbright", "true");
+                    worldTicks = 749;
+                } else if (worldTicks == 780) {
+                    config.setProperty("oldanimations", "false");
+                    worldTicks = 829;
+                }
+            }
             switch (++worldTicks) {
                 case 10:
                     Object enteringPlayer = field(mc, "field_71439_g", "thePlayer");
@@ -1984,6 +2001,65 @@ public class AntagonHud {
                     shot("antagon-status-editor.png");
                     break;
                 case 830:
+                    // Earlier tab/scoreboard tests leave these visible, which can
+                    // accidentally repair leaked blend state before the inventory draws.
+                    config.setProperty("scoreboard", "true");
+                    config.setProperty("scoreboard.hide", "on");
+                    Object tab =
+                            field(
+                                    field(mc, "field_71474_y", "gameSettings"),
+                                    "field_74321_H",
+                                    "keyBindPlayerList");
+                    invoke(
+                            tab.getClass(),
+                            null,
+                            new String[] {"func_74510_a", "setKeyBindState"},
+                            ((Number) call(tab, new String[] {"func_151463_i", "getKeyCode"}))
+                                    .intValue(),
+                            false);
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 840:
+                    shot("antagon-inventory-world.png");
+                    // A visible chat line leaves blending disabled after vanilla text
+                    // rendering. Exercise that state as well as the empty-chat frames.
+                    call(
+                            call(
+                                    field(mc, "field_71456_v", "ingameGUI"),
+                                    new String[] {"func_146158_b", "getChatGUI"}),
+                            new String[] {"func_146227_a", "printChatMessage"},
+                            Class.forName("net.minecraft.util.ChatComponentText")
+                                    .getConstructor(String.class)
+                                    .newInstance("Inventory render test"));
+                    smokeInventory(false);
+                    break;
+                case 855:
+                    shot("antagon-inventory-survival.png");
+                    config.setProperty("armor", "false");
+                    break;
+                case 875:
+                    shot("antagon-inventory-no-armor.png");
+                    config.setProperty("armor", "true");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 880:
+                    smokeInventory(true);
+                    break;
+                case 900:
+                    shot("antagon-inventory-creative.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    config.setProperty("armor.layout", "vertical");
+                    config.setProperty("armor.size", "65%");
+                    config.setProperty("armor.bg", "off");
+                    smokeInventory(false);
+                    break;
+                case 915:
+                    shot("antagon-inventory-reopened.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 920:
+                    shot("antagon-inventory-return.png");
+                    smokeInventoryBackgrounds();
                     if (!"1".equals(System.getenv("ANTAGON_TEST_RADIO"))) {
                         call(mc, new String[] {"func_71400_g", "shutdown"});
                         break;
@@ -2005,7 +2081,7 @@ public class AntagonHud {
                             new String[] {"func_147108_a", "displayGuiScreen"},
                             new RadioMenu(null));
                     break;
-                case 980:
+                case 1070:
                     if (!NativeRadio.state.equals("playing") || NativeRadio.position < .5)
                         throw new IllegalStateException(
                                 "Native MP3 output did not advance: "
@@ -2016,7 +2092,7 @@ public class AntagonHud {
                     NativeRadio.toggle();
                     smokeRadioPosition = NativeRadio.position;
                     break;
-                case 990:
+                case 1080:
                     if (!NativeRadio.state.equals("paused")
                             || Math.abs(NativeRadio.position - smokeRadioPosition) > .3)
                         throw new IllegalStateException("Native radio did not pause");
@@ -2025,13 +2101,13 @@ public class AntagonHud {
                     if (NativeRadio.track.id.equals(smokeRadioTrack))
                         throw new IllegalStateException("Native next did not change track");
                     break;
-                case 1100:
+                case 1190:
                     if (!NativeRadio.state.equals("playing"))
                         throw new IllegalStateException(
                                 "Native next track did not start: " + NativeRadio.error);
                     NativeRadio.seek(35);
                     break;
-                case 1160:
+                case 1250:
                     if (!NativeRadio.state.equals("playing") || NativeRadio.position < 35)
                         throw new IllegalStateException(
                                 "Native playlist seek failed: " + NativeRadio.position);
@@ -2041,7 +2117,7 @@ public class AntagonHud {
                             break;
                         }
                     break;
-                case 1320:
+                case 1410:
                     RadioCatalog.Live live = NativeRadio.catalog.live(NativeRadio.collection);
                     if (!NativeRadio.state.equals("playing")
                             || live == null
@@ -2070,7 +2146,56 @@ public class AntagonHud {
             System.err.println("[ANTAGON TEST] " + e);
             e.printStackTrace();
             System.clearProperty("antagon.smoke");
+            try {
+                call(mc, new String[] {"func_71400_g", "shutdown"});
+            } catch (Exception ignored) {
+            }
         }
+    }
+
+    private void smokeInventoryBackgrounds() throws Exception {
+        for (String kind :
+                new String[] {"world", "survival", "no-armor", "creative", "reopened", "return"}) {
+            BufferedImage image =
+                    ImageIO.read(new File("screenshots/antagon-inventory-" + kind + ".png"));
+            int visible = 0, total = 0;
+            // A patch of grass outside every container, HUD widget and held item
+            // in the isolated flat world. An opaque inventory gradient loses its color.
+            for (int y = image.getHeight() * 72 / 100; y < image.getHeight() * 82 / 100; y += 4) {
+                for (int x = image.getWidth() * 4 / 100; x < image.getWidth() * 18 / 100; x += 4) {
+                    int rgb = image.getRGB(x, y);
+                    int r = rgb >> 16 & 255, g = rgb >> 8 & 255, b = rgb & 255;
+                    if (g >= 10 && g > r + 2 && g > b + 2) visible++;
+                    total++;
+                }
+            }
+            // Allow dark grass texels whose channels become nearly equal under
+            // vanilla's dimming gradient. The broken opaque background has none.
+            if (visible < total * .5)
+                throw new IllegalStateException(
+                        "Inventory obscured the world (" + kind + "): " + visible + "/" + total);
+        }
+        System.out.println(
+                "[ANTAGON TEST] Inventory backgrounds preserve the world with armor and potion"
+                        + " HUDs");
+    }
+
+    private void smokeInventory(boolean creative) throws Exception {
+        Object self = field(mc, "field_71439_g", "thePlayer");
+        Class<?> mode = Class.forName("net.minecraft.world.WorldSettings$GameType");
+        call(
+                field(mc, "field_71442_b", "playerController"),
+                new String[] {"func_78746_a", "setGameType"},
+                Enum.valueOf((Class) mode, creative ? "CREATIVE" : "SURVIVAL"));
+        Class<?> screen =
+                Class.forName(
+                        "net.minecraft.client.gui.inventory."
+                                + (creative ? "GuiContainerCreative" : "GuiInventory"));
+        call(
+                mc,
+                new String[] {"func_147108_a", "displayGuiScreen"},
+                screen.getConstructor(Class.forName("net.minecraft.entity.player.EntityPlayer"))
+                        .newInstance(self));
     }
 
     private void begin(float scale) throws Exception {
@@ -2349,6 +2474,7 @@ public class AntagonHud {
             hudWidth = sw;
             hudHeight = sh;
             bounds.clear();
+            if (enabled("potions")) preparePotionTexture();
             try {
                 begin(scale);
                 if (enabled("fps")) {
@@ -2428,7 +2554,6 @@ public class AntagonHud {
                     panel("ping", value, 110, 12, sw, sh);
                 }
                 if (enabled("radio")) radioOverlay(sw, sh);
-                if (enabled("armor")) armorOverlay(player, sw, sh);
                 if (enabled("potions")) potionOverlay(player, sw, sh);
                 if (enabled("combo"))
                     panel("combo", combo > 0 ? combo + " COMBO" : "SEM COMBO", 12, 252, sw, sh);
@@ -2451,6 +2576,7 @@ public class AntagonHud {
             } finally {
                 end();
             }
+            if (enabled("armor")) armorOverlay(player, sw, sh);
             if (enabled("scoreboard") && !flag("scoreboard", "hide")) drawScoreboard(sw, sh);
         } catch (Throwable error) {
             report(error);
@@ -2469,14 +2595,13 @@ public class AntagonHud {
         if (horizontal) cell = Math.max(cell, content + 8);
         float w = horizontal ? items.size() * cell + 8 : Math.max(40, 34 + content + 6);
         float h = horizontal ? (mode.equals("off") ? 27 : 40) : items.size() * 24 + 6;
+        begin(hudScale);
         place("armor", w, h, sw - w - 12, sh - h - 45, sw, sh);
         try {
             if (flag("armor", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
             for (int i = 0; i < items.size(); i++) {
                 StatusData.Armor item = items.get(i);
-                float x = horizontal ? 4 + i * cell + (cell - 16) / 2 : 6;
                 float y = horizontal ? 5 : 5 + i * 24;
-                inventoryIcon(item.stack, x, y);
                 String value = item.text(mode);
                 int tint = item.maximum > 0 && item.remaining < item.maximum / 5f ? RED : WHITE;
                 float tx = horizontal ? 4 + i * cell + (cell - width(value) * .7f) / 2 : 31;
@@ -2489,6 +2614,24 @@ public class AntagonHud {
             }
         } finally {
             GL11.glPopMatrix();
+            end();
+        }
+
+        // RenderItem changes GlStateManager's cache. Keep native rendering outside
+        // the raw GL attribute scope used by the font/backgrounds: glPopAttrib
+        // restores the driver state only, leaving cached blend/texture state stale.
+        GL11.glPushMatrix();
+        GL11.glScalef(hudScale, hudScale, 1);
+        place("armor", w, h, sw - w - 12, sh - h - 45, sw, sh);
+        try {
+            for (int i = 0; i < items.size(); i++) {
+                float x = horizontal ? 4 + i * cell + (cell - 16) / 2 : 6;
+                float y = horizontal ? 5 : 5 + i * 24;
+                inventoryIcon(items.get(i).stack, x, y);
+            }
+        } finally {
+            GL11.glPopMatrix();
+            GL11.glPopMatrix();
         }
     }
 
@@ -2498,13 +2641,9 @@ public class AntagonHud {
         Class<?> state = Class.forName("net.minecraft.client.renderer.GlStateManager");
         Class<?> helper = Class.forName("net.minecraft.client.renderer.RenderHelper");
         try {
-            // PixelFont binds GL textures directly. Invalidate Minecraft's cached binding
-            // before RenderItem changes atlas filters, or it can modify the font texture.
-            invoke(state, null, new String[] {"func_179144_i", "bindTexture"}, 0);
-            invoke(state, null, new String[] {"func_179117_G", "resetColor"});
             invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glEnable(0x803A); // GL12.GL_RESCALE_NORMAL
+            invoke(state, null, new String[] {"func_179126_j", "enableDepth"});
+            invoke(state, null, new String[] {"func_179091_B", "enableRescaleNormal"});
             invoke(helper, null, new String[] {"func_74520_c", "enableGUIStandardItemLighting"});
             Object renderer = call(mc, new String[] {"func_175599_af", "getRenderItem"});
             call(
@@ -2516,10 +2655,10 @@ public class AntagonHud {
         } finally {
             invoke(helper, null, new String[] {"func_74518_a", "disableStandardItemLighting"});
             invoke(state, null, new String[] {"func_179101_C", "disableRescaleNormal"});
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-            GL11.glDisable(GL11.GL_LIGHTING);
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            invoke(state, null, new String[] {"func_179084_k", "disableBlend"});
+            // Vanilla overlays drawn after the HUD (e.g. achievements) expect alpha testing.
+            invoke(state, null, new String[] {"func_179141_d", "enableAlpha"});
+            invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
             GL11.glPopMatrix();
         }
     }
@@ -2559,26 +2698,31 @@ public class AntagonHud {
     }
 
     private Object potionTexture;
+    private int potionTextureId;
 
-    private void potionIcon(int icon, float x, float y) throws Exception {
+    private void preparePotionTexture() throws Exception {
         if (potionTexture == null)
             potionTexture =
                     Class.forName("net.minecraft.util.ResourceLocation")
                             .getConstructor(String.class)
                             .newInstance("textures/gui/container/inventory.png");
         Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
-        // Bind directly so the custom font's texture binding cannot invalidate Minecraft's cache.
+        // TextureManager may bind a newly loaded texture via GlStateManager.
+        // Load it before entering any raw GL scope, including after a resource reload.
         Object texture =
                 call(textures, new String[] {"func_110581_b", "getTexture"}, potionTexture);
         if (texture == null) {
             call(textures, new String[] {"func_110577_a", "bindTexture"}, potionTexture);
             texture = call(textures, new String[] {"func_110581_b", "getTexture"}, potionTexture);
         }
-        int id =
+        potionTextureId =
                 ((Number) call(texture, new String[] {"func_110552_b", "getGlTextureId"}))
                         .intValue();
+    }
+
+    private void potionIcon(int icon, float x, float y) {
         GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, potionTextureId);
         color(WHITE);
         float u = (icon % 8 * 18) / 256f, v = (198 + icon / 8 * 18) / 256f, size = 18 / 256f;
         GL11.glBegin(GL11.GL_QUADS);

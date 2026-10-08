@@ -1,7 +1,7 @@
 {
   "name": "antagon-client",
   "productName": "Antagon Client",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Client de Minecraft para macOS e Windows, com mods de PvP, cosméticos, amigos e rádio.",
   "main": "electron/main.cjs",
   "author": "Antagon Studio",
