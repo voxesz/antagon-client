@@ -70,7 +70,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.waitForFunction(async () => (await window.antagon.init()).settings.memory === 4);
     await page.selectOption('#game-version', 'latest-26');
     await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'Sodium + Iris');
-    assert.equal(await page.locator('#home-mods-state').textContent(), 'Essential incluso');
+    assert.equal(await page.locator('#home-mods-state').textContent(), 'Essential · Capas · Sprint');
     assert.equal(await page.locator('[data-view="radio"]').isVisible(), true);
     await page.click('#home-mods');
     assert.equal(await page.locator('#fabric-row').isVisible(), true);

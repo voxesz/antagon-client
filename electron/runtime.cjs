@@ -6,7 +6,7 @@ const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
-const { resolveMods, installMods } = require('./modern-mods.cjs');
+const { resolveMods, installMods, installCompanion } = require('./modern-mods.cjs');
 const JAVA_MANIFEST =
   'https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json';
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
@@ -458,6 +458,7 @@ class Runtime {
     stage(`Instalando mods Fabric para ${releaseId}`, 88);
     const versions = await resolveMods(releaseId, async (url) => (await fetchOK(url)).json());
     const mods = await installMods(game, versions, download);
+    const companion = await installCompanion(game, this.assets, releaseId);
     await fsp.mkdir(path.join(game, 'shaderpacks'), { recursive: true });
 
     const logFile = path.join(this.root, 'metadata', meta.logging?.client?.file?.id || 'client-logging.xml');
@@ -476,7 +477,7 @@ class Runtime {
       version: releaseId,
       metadata: meta,
       profile,
-      mods: mods.map((mod) => mod.file),
+      mods: [...mods.map((mod) => mod.file), companion],
     };
     await fsp.writeFile(
       path.join(game, 'installation.json'),
@@ -490,6 +491,7 @@ class Runtime {
     const modern = settings.gameVersion === 'latest-26';
     const installation = modern ? await this.prepareModern() : await this.prepare();
     const game = installation.game || this.game;
+    this.activeGame = game;
     const options = path.join(game, 'options.txt');
     if (!fs.existsSync(options))
       await fsp.writeFile(
@@ -621,20 +623,19 @@ class Runtime {
     this.emit({ phase: 'launching', message: 'Abrindo Minecraft', percent: 100 });
     const logDir = path.join(this.root, 'logs');
     await fsp.mkdir(logDir, { recursive: true });
+    await Promise.all(
+      ['antagon-status.txt', 'antagon-players.txt', 'antagon-cosmetics.properties', 'antagon-ui-request.txt'].map(
+        (file) => fsp.rm(path.join(game, file), { force: true }),
+      ),
+    );
     if (!modern) {
-      await fsp.rm(path.join(game, 'antagon-status.txt'), { force: true });
-      await Promise.all([
-        fsp.rm(path.join(game, 'antagon-players.txt'), { force: true }),
-        fsp.rm(path.join(game, 'antagon-cosmetics.properties'), { force: true }),
-        fsp.rm(path.join(game, 'antagon-ui-request.txt'), { force: true }),
-      ]);
       await fsp.writeFile(
         path.join(game, 'antagon-session.properties'),
         'admin=' + (testOptions.admin === true ? 'true' : 'false') + '\n',
         { mode: 0o600 },
       );
     }
-    if (!modern && testOptions.beforeSpawn) await testOptions.beforeSpawn();
+    if (testOptions.beforeSpawn) await testOptions.beforeSpawn(game);
     const file = await fsp.open(path.join(logDir, 'game.log'), 'w', 0o600);
     const log = file.createWriteStream();
     const child = spawn(installation.java, args, {

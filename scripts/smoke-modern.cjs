@@ -46,6 +46,7 @@ async function main() {
   if (!shader) throw Error('Shader de teste compatível não encontrado.');
   await download(shader.url, path.join(game, 'shaderpacks', path.basename(shader.filename)), shader.hashes.sha1);
   await fs.mkdir(path.join(game, 'config'), { recursive: true });
+  await fs.writeFile(path.join(game, 'config/antagon-modern.properties'), 'toggleSprint=false\n');
   await fs.writeFile(path.join(game, 'config/iris.properties'), `enableShaders=true\nshaderPack=${shader.filename}\n`);
 
   const classes = path.join(root, 'test-classes');
@@ -88,10 +89,11 @@ async function main() {
     }),
   );
   runtime.prepareModern = async () => installation;
-  await runtime.launch(
-    { ...DEFAULTS, gameVersion: 'latest-26', memory: 4, discordPresence: false },
-    offlineAccount('AntagonTest'),
-  );
+  const account = offlineAccount('AntagonTest');
+  await runtime.launch({ ...DEFAULTS, gameVersion: 'latest-26', memory: 4, discordPresence: false }, account, {
+    beforeSpawn: async (directory) =>
+      fs.writeFile(path.join(directory, 'antagon-cosmetics.properties'), `${account.id}=client,cape:antagon_cape\n`),
+  });
   const child = runtime.child;
   const timeout = setTimeout(() => child.kill(), 240000);
   try {
@@ -107,7 +109,16 @@ async function main() {
     if (code !== 0 || !observedRunning || !log.includes('[MODERN TEST] OK:'))
       throw Error('O teste do Minecraft moderno falhou.');
     if (!log.includes('[MODERN TEST] Essential loaded')) throw Error('O Essential não foi carregado.');
-    for (const name of ['modern-menu', 'modern-iris', 'modern-world-shaders']) {
+    if (!log.includes('[MODERN TEST] Antagon capes and Toggle Sprint verified'))
+      throw Error('Capas ou Toggle Sprint falharam.');
+    for (const name of [
+      'modern-menu',
+      'modern-iris',
+      'modern-world-shaders',
+      'modern-cape-builtins',
+      'modern-cape-custom',
+      'modern-cape-sprint',
+    ]) {
       const png = await fs.readFile(path.join(game, 'screenshots', name + '.png'));
       if (png.length < 3000 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
         throw Error('Screenshot inválido: ' + name);

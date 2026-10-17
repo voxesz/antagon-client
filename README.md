@@ -100,10 +100,19 @@ com controles separados. As alterações são visuais; o módulo não modifica a
 
 O conjunto de mods próprios do Antagon, incluindo Item Size e cosméticos no jogo, é do perfil **1.8.9**.
 O perfil **mais recente** usa Fabric, Sodium (renderização), Iris (shaders), Lithium (simulação) e FerriteCore (memória),
-com Fabric API e Essential. Esse perfil usa os menus do Minecraft com os recursos sociais do Essential, sem os mods próprios do Antagon.
+com Fabric API e Essential. O módulo Fabric do Antagon adiciona as **capas da loja** e **Toggle Sprint** a esse perfil.
 Escolha **Mais recente · Sodium + Iris** na tela inicial. Para adicionar shaders, use a tela de shaders do Iris nas opções
 de vídeo; os arquivos `.zip` ficam em `minecraft-<versão>/shaderpacks` dentro da pasta de dados do Antagon Client.
 O launcher instala o Java oficial exigido pelo jogo (Java 25 para 26.3), separado do Java 8 do perfil 1.8.9.
+
+As capas equipadas em **Inventário** aparecem no seu personagem e nos outros jogadores que usam o Antagon Client,
+incluindo as capas personalizadas da loja. É necessário estar conectado à comunidade com a conta Microsoft.
+A troca de capa no launcher é aplicada no jogo em andamento. As capas oficiais continuam sendo usadas quando não há
+uma capa Antagon equipada. Jogadores sem o módulo do Antagon não veem essas capas.
+
+O **Toggle Sprint** é ligado ou desligado com **V**. A tecla pode ser alterada em **Opções → Controles → Antagon Client**.
+Quando ligado, o personagem corre ao andar para a frente, com indicador na tela. O estado é lembrado ao reabrir o jogo;
+agachar, parar e abrir menus continuam respeitando as regras normais do Minecraft.
 
 O **Essential** permite compartilhar um mundo e convidar amigos gratuitamente, sem Hamachi ou Radmin.
 Entre no launcher com uma conta Microsoft que tenha Minecraft Java. Dentro do jogo, use **Host World**
@@ -126,11 +135,12 @@ o launcher preserva os pacotes selecionados e sua ordem.
 
 ## Desenvolvimento
 
-Requisitos: Node.js 22+ e JDK 17+ (só para compilar o mod). Os testes de interface e do jogo usam perfis isolados em `build/`, sem modificar seus mundos ou preferências.
+Requisitos: Node.js 22+ e JDK 25+ para compilar o módulo Fabric (o mod 1.8.9 também pode ser compilado com JDK 17+). Os testes de interface e do jogo usam perfis isolados em `build/`, sem modificar seus mundos ou preferências.
 
 ```sh
 npm install
 npm run build:mod
+npm run build:modern
 npm start
 ```
 
@@ -138,6 +148,7 @@ npm start
 | --- | --- |
 | `npm run install:game` | Baixa e instala Minecraft 1.8.9 + Forge sem abrir o launcher |
 | `npm run install:modern` | Instala a versão estável mais recente, Java, Fabric, otimizações, Iris e Essential |
+| `npm run build:modern` | Compila o módulo Fabric de capas e Toggle Sprint; baixa as dependências de compilação quando necessário |
 | `npm test` | Testes de estado, downloads, privacidade e protocolo do Discord |
 | `npm run test:java` | Testes de reflexão e limites do menu em diferentes resoluções |
 | `npm run test:discord` | Valida o Rich Presence com o Discord local aberto |
@@ -146,7 +157,7 @@ npm start
 | `npm run test:radio` | Valida o player de rádios e playlists |
 | `npm run test:native-audio` | Testa os decodificadores WAV e OGG com áudio local e volume zero (após preparar o perfil de teste do jogo) |
 | `npm run test:game` | Abre o jogo, testa menu, editor e mods e salva screenshots |
-| `npm run test:modern` | Com JDK 25+, valida o Essential carregado, menu, tela do Iris e um mundo com Complementary Reimagined ativo em perfil isolado |
+| `npm run test:modern` | Com JDK 25+, valida Essential, capas próprias e remotas, capas personalizadas, Toggle Sprint e um mundo com shaders em perfil isolado |
 | `npm run package:mac` | Compila o mod e gera o `.app` em `release/` |
 | `npm run package:win` | Compila o mod e gera a versão Windows x64 em `release/` |
 | `npm run format` | Formata o código (Prettier) |
@@ -204,6 +215,7 @@ não podem ser bloqueados com segurança sem um servidor de jogo ou serviço de 
 electron/   processo principal: login, instalação, execução do jogo, comunidade e atualização
 ui/         interface do launcher, loja, administração e player de rádio
 mod-src/    mod Forge (HUD, menu, mods) e coremod (Item Size, Hit Color e outros ajustes)
+modern-mod-src/ módulo Fabric 26.3 (capas Antagon e Toggle Sprint)
 supabase/   banco e função de login da comunidade
 scripts/    build do mod, testes e empacotamento
 assets/     fonte, ícones e natives arm64 (ver assets/natives-arm64/SOURCES.txt)

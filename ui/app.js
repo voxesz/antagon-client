@@ -1077,5 +1077,5 @@ function renderHomeMods() {
   const modern = settings?.gameVersion === 'latest-26';
   $('[data-view="radio"]').hidden = !modern;
   $('#home-mods-name').textContent = modern ? 'Sodium + Iris' : 'OptiFine';
-  $('#home-mods-state').textContent = modern ? 'Essential incluso' : optifineFile ? 'Instalado' : 'Configurar';
+  $('#home-mods-state').textContent = modern ? 'Essential · Capas · Sprint' : optifineFile ? 'Instalado' : 'Configurar';
 }

@@ -251,7 +251,7 @@ async function gameActivity() {
       server = null;
     if (runtime.child) {
       const status = await fs.promises
-        .readFile(path.join(root, 'minecraft/antagon-status.txt'), 'utf8')
+        .readFile(path.join(runtime.activeGame || runtime.game, 'antagon-status.txt'), 'utf8')
         .catch(() => 'menu');
       const parts = status.trim().split(' ');
       if (['menu', 'singleplayer', 'server', 'playing'].includes(parts[0])) {
@@ -268,8 +268,8 @@ async function gameActivity() {
   }
 }
 /** Custom capes live in Supabase Storage; the game reads them from antagon-capes/<id>.png. */
-async function cosmeticImage(id) {
-  const file = path.join(root, 'minecraft/antagon-capes', `${id}.png`);
+async function cosmeticImage(id, game = runtime.activeGame || runtime.game) {
+  const file = path.join(game, 'antagon-capes', `${id}.png`);
   if (fs.existsSync(file)) return;
   const res = await fetch(cosmeticUrl(id), { signal: AbortSignal.timeout(2e4) });
   const png = Buffer.from(await res.arrayBuffer());
@@ -346,7 +346,8 @@ async function startGame(server) {
     const result = await runtime.launch(settings, active, {
       server,
       admin: access.isAdmin,
-      beforeSpawn: async () => {
+      beforeSpawn: async (game) => {
+        cosmeticsBridge = new CosmeticsBridge(game, community, (id) => cosmeticImage(id, game));
         if (settings.mode !== 'microsoft' || !community?.me) return;
         await community.publish().catch(() => {});
         await cosmeticsBridge.sync({ force: true, ownOnly: true, waitForImages: true }).catch(() => {});

@@ -92,4 +92,35 @@ async function installMods(game, versions, download) {
   return installed;
 }
 
-module.exports = { resolveMods, installMods };
+async function installCompanion(game, assets, gameVersion) {
+  if (!/^[0-9][\w.-]*$/.test(gameVersion)) throw Error('Versão inválida para o módulo Antagon.');
+  const filename = `antagon-modern-${gameVersion}.jar`;
+  const source = path.join(assets, filename);
+  const data = await fs.readFile(source).catch(() => {
+    throw Error(`O módulo Antagon para Minecraft ${gameVersion} não está disponível. Atualize o launcher.`);
+  });
+  const readId = (bytes) => {
+    const entry = unzipSync(bytes, { filter: (item) => item.name === 'fabric.mod.json' })['fabric.mod.json'];
+    return entry && JSON.parse(Buffer.from(entry).toString('utf8')).id;
+  };
+  if (readId(data) !== 'antagon_modern') throw Error('Módulo Fabric do Antagon inválido.');
+  const mods = path.join(game, 'mods');
+  await fs.mkdir(mods, { recursive: true });
+  for (const file of await fs.readdir(mods)) {
+    if (!file.endsWith('.jar') || file === filename) continue;
+    let id;
+    try {
+      id = readId(await fs.readFile(path.join(mods, file)));
+    } catch {
+      continue;
+    }
+    if (id !== 'antagon_modern') continue;
+    const backup = path.join(game, 'antagon-mod-backups');
+    await fs.mkdir(backup, { recursive: true });
+    await fs.rename(path.join(mods, file), path.join(backup, `${Date.now()}-${file}`));
+  }
+  await fs.writeFile(path.join(mods, filename), data);
+  return filename;
+}
+
+module.exports = { resolveMods, installMods, installCompanion };

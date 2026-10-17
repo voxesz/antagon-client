@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
-const { resolveMods, installMods } = require('../electron/modern-mods.cjs');
+const { resolveMods, installMods, installCompanion } = require('../electron/modern-mods.cjs');
 
 const version = (project, id = project, extra = {}) => ({
   project_id: project,
@@ -86,4 +86,23 @@ test('an update replaces duplicate managed mods and preserves custom mods', asyn
     /download failed/,
   );
   assert.deepEqual(await fs.readFile(path.join(root, 'mods/sodium-new.jar')), before);
+});
+
+test('bundled Fabric companion updates renamed copies without touching third-party mods', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'antagon-companion-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const game = path.join(root, 'game');
+  const assets = path.join(root, 'assets');
+  await fs.mkdir(path.join(game, 'mods'), { recursive: true });
+  await fs.mkdir(assets);
+  const jar = (id, version) => zipSync({ 'fabric.mod.json': Buffer.from(JSON.stringify({ id, version })) });
+  const update = jar('antagon_modern', 'new');
+  await fs.writeFile(path.join(game, 'mods/renamed-antagon.jar'), jar('antagon_modern', 'old'));
+  await fs.writeFile(path.join(game, 'mods/essential.jar'), jar('essential', '1.5.1'));
+  await fs.writeFile(path.join(assets, 'antagon-modern-26.3.jar'), update);
+  assert.equal(await installCompanion(game, assets, '26.3'), 'antagon-modern-26.3.jar');
+  assert.deepEqual((await fs.readdir(path.join(game, 'mods'))).sort(), ['antagon-modern-26.3.jar', 'essential.jar']);
+  assert.deepEqual(await fs.readFile(path.join(game, 'mods/antagon-modern-26.3.jar')), Buffer.from(update));
+  await assert.rejects(installCompanion(game, assets, '26.4'), /Atualize o launcher/);
+  await assert.rejects(installCompanion(game, assets, '../../elsewhere'), /inválida/);
 });
