@@ -1,7 +1,7 @@
 # Antagon Client
 
 Client de Minecraft para **macOS e Windows**, com mods de PvP, cosméticos, amigos e rádio.
-Escolha entre **Minecraft 1.8.9 com Forge** e **26.x com Fabric**, personalize sua experiência e jogue com sua comunidade.
+Escolha entre **Minecraft 1.8.9 com Forge** e a **versão estável mais recente com Fabric, Sodium e Iris**, personalize sua experiência e jogue com sua comunidade.
 
 ![Launcher](docs/launcher.png)
 
@@ -35,13 +35,14 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 **Launcher**
 
 - Conta Microsoft original ou nick offline
-- Perfis separados para Minecraft 1.8.9 + Forge e a versão estável mais recente da linha 26.x + Fabric
+- Perfis separados para Minecraft 1.8.9 + Forge e a versão estável mais recente + Fabric (atualmente 26.3)
 - Instala o jogo numa pasta isolada, preservando outros launchers, mundos e texturas
 - Suporte a macOS Apple Silicon e Intel, com Java e bibliotecas nativas adequados à arquitetura
 - Windows 10/11 x64, com instalação automática do Java necessário para cada versão
 - Tela inicial com imagem personalizável, navegação centralizada, configurações de jogo e cosméticos em destaque
 - Configurações completas pela engrenagem ao lado do botão de jogar
-- Instalação guiada do OptiFine para 1.8.9; Fabric e Sodium no perfil 26.x
+- Instalação guiada do OptiFine para 1.8.9; Fabric, Sodium, Iris, Lithium, FerriteCore e Essential automáticos no perfil mais recente
+- Versões estáveis dos mods com resolução das dependências do Iris e substituição das versões antigas sem duplicatas
 - Amigos: adicionar pelo nick, ver o que cada um está jogando, entrar no mesmo servidor e conversar (conta Microsoft)
 - Atualização automática pelas Releases do GitHub
 - Discord Rich Presence integrado, com controle de privacidade do servidor
@@ -98,7 +99,18 @@ ajustáveis no editor de HUD.
 com controles separados. As alterações são visuais; o módulo não modifica ataques ou envia pacotes de combate.
 
 O conjunto de mods próprios do Antagon, incluindo Item Size e cosméticos no jogo, é do perfil **1.8.9**.
-O perfil **26.x** usa Fabric e mods compatíveis; ainda não inclui o HUD próprio do Antagon.
+O perfil **mais recente** usa Fabric, Sodium (renderização), Iris (shaders), Lithium (simulação) e FerriteCore (memória),
+com Fabric API e Essential. Esse perfil usa os menus do Minecraft com os recursos sociais do Essential, sem os mods próprios do Antagon.
+Escolha **Mais recente · Sodium + Iris** na tela inicial. Para adicionar shaders, use a tela de shaders do Iris nas opções
+de vídeo; os arquivos `.zip` ficam em `minecraft-<versão>/shaderpacks` dentro da pasta de dados do Antagon Client.
+O launcher instala o Java oficial exigido pelo jogo (Java 25 para 26.3), separado do Java 8 do perfil 1.8.9.
+
+O **Essential** permite compartilhar um mundo e convidar amigos gratuitamente, sem Hamachi ou Radmin.
+Entre no launcher com uma conta Microsoft que tenha Minecraft Java. Dentro do jogo, use **Host World**
+e os amigos do Essential para convidar quem vai jogar; o anfitrião precisa manter o mundo aberto.
+Os amigos também precisam do Essential compatível. As contas, convites e preferências do Essential são gerenciados
+pelo próprio mod, separadamente dos amigos do Antagon. O launcher baixa o arquivo oficial completo do Modrinth;
+cada jogador aceita os termos do Essential na primeira utilização.
 
 No módulo **CPS**, escolha **ambos**, **esquerdo** ou **direito** em **Botões do mouse** e use
 **Mostrar CPS** para ligar ou desligar o sufixo. O padrão continua `0 | 0 CPS`.
@@ -125,6 +137,7 @@ npm start
 | Comando | O que faz |
 | --- | --- |
 | `npm run install:game` | Baixa e instala Minecraft 1.8.9 + Forge sem abrir o launcher |
+| `npm run install:modern` | Instala a versão estável mais recente, Java, Fabric, otimizações, Iris e Essential |
 | `npm test` | Testes de estado, downloads, privacidade e protocolo do Discord |
 | `npm run test:java` | Testes de reflexão e limites do menu em diferentes resoluções |
 | `npm run test:discord` | Valida o Rich Presence com o Discord local aberto |
@@ -133,6 +146,7 @@ npm start
 | `npm run test:radio` | Valida o player de rádios e playlists |
 | `npm run test:native-audio` | Testa os decodificadores WAV e OGG com áudio local e volume zero (após preparar o perfil de teste do jogo) |
 | `npm run test:game` | Abre o jogo, testa menu, editor e mods e salva screenshots |
+| `npm run test:modern` | Com JDK 25+, valida o Essential carregado, menu, tela do Iris e um mundo com Complementary Reimagined ativo em perfil isolado |
 | `npm run package:mac` | Compila o mod e gera o `.app` em `release/` |
 | `npm run package:win` | Compila o mod e gera a versão Windows x64 em `release/` |
 | `npm run format` | Formata o código (Prettier) |

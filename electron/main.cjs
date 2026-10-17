@@ -488,7 +488,10 @@ app.whenReady().then(() => {
         ? fs.existsSync(root) &&
           fs
             .readdirSync(root)
-            .some((name) => /^minecraft-26\./.test(name) && fs.existsSync(path.join(root, name, 'installation.json')))
+            .some(
+              (name) =>
+                /^minecraft-[0-9][\w.-]*$/.test(name) && fs.existsSync(path.join(root, name, 'installation.json')),
+            )
         : fs.existsSync(path.join(root, 'installation.json')),
     optifine: optifine(),
     wallpaper: wallpaper(),

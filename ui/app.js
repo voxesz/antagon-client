@@ -1076,6 +1076,6 @@ function renderVersion(version, installed = false) {
 function renderHomeMods() {
   const modern = settings?.gameVersion === 'latest-26';
   $('[data-view="radio"]').hidden = !modern;
-  $('#home-mods-name').textContent = modern ? 'Fabric + Sodium' : 'OptiFine';
-  $('#home-mods-state').textContent = modern ? 'Mods compatíveis' : optifineFile ? 'Instalado' : 'Configurar';
+  $('#home-mods-name').textContent = modern ? 'Sodium + Iris' : 'OptiFine';
+  $('#home-mods-state').textContent = modern ? 'Essential incluso' : optifineFile ? 'Instalado' : 'Configurar';
 }

@@ -1,7 +1,7 @@
 {
   "name": "antagon-client",
   "productName": "Antagon Client",
-  "version": "0.1.21",
+  "version": "0.1.23",
   "description": "Client de Minecraft para macOS e Windows, com mods de PvP, cosméticos, amigos e rádio.",
   "main": "electron/main.cjs",
   "author": "Antagon Studio",
@@ -9,10 +9,12 @@
   "scripts": {
     "start": "electron .",
     "install:game": "node scripts/prepare.cjs",
+    "install:modern": "node scripts/prepare.cjs --modern",
     "test": "node --test tests/*.test.cjs",
     "test:ui": "node scripts/test-ui.cjs",
     "test:radio": "node scripts/test-radio.cjs",
     "test:game": "node scripts/smoke-game.cjs",
+    "test:modern": "node scripts/smoke-modern.cjs",
     "build:mod": "node scripts/build-mod.cjs",
     "format": "prettier --write .",
     "prepackage:mac": "npm run build:mod",

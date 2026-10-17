@@ -6,6 +6,9 @@ const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
+const { resolveMods, installMods } = require('./modern-mods.cjs');
+const JAVA_MANIFEST =
+  'https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json';
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
 const FORGE_URL = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/forge-${FORGE_VERSION}-universal.jar`;
 const PLATFORM = process.platform === 'win32' ? 'windows' : 'osx';
@@ -51,7 +54,11 @@ function checkURL(url) {
   return u.href;
 }
 async function fetchOK(url) {
-  const res = await fetch(checkURL(url), { signal: AbortSignal.timeout(12e4), redirect: 'error' });
+  const res = await fetch(checkURL(url), {
+    signal: AbortSignal.timeout(12e4),
+    redirect: 'error',
+    headers: { 'User-Agent': `AntagonClient/${require('../package.json').version} (github.com/voxesz/antagon-client)` },
+  });
   if (!res.ok)
     throw Error(
       `Download indisponível: ${path.basename(new URL(url).pathname)} em ${new URL(url).hostname} (HTTP ${res.status}).`,
@@ -166,7 +173,6 @@ class Runtime {
     };
     let java = find(path.join(javaRoot, JAVA.directory));
     if (!java) {
-      await fsp.rm(javaRoot, { recursive: true, force: true });
       await fsp.mkdir(javaRoot, { recursive: true });
       const archive = path.join(javaRoot, path.basename(JAVA.url));
       await download(JAVA.url, archive, JAVA.sha256, 'sha256', this.emit);
@@ -307,20 +313,17 @@ class Runtime {
     const stage = (message, percent) => this.emit({ phase: 'preparing', message, percent });
     const manifest = await (await fetchOK('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')).json();
     const releaseId = manifest.latest?.release;
-    if (!/^26\./.test(releaseId || '')) throw Error('A versão estável 26.x do Minecraft não foi encontrada.');
-    const entry = manifest.versions.find((version) => version.id === releaseId);
-    if (!entry) throw Error('Metadados da versão 26.x não encontrados.');
+    const entry = manifest.versions.find((version) => version.id === releaseId && version.type === 'release');
+    if (!entry) throw Error('A versão estável mais recente do Minecraft não foi encontrada.');
     const metadataFile = path.join(this.root, 'metadata', `${releaseId}.json`);
     stage(`Preparando Minecraft ${releaseId}`, 5);
     await download(entry.url, metadataFile, entry.sha1, 'sha1', this.emit);
     const meta = JSON.parse(await fsp.readFile(metadataFile, 'utf8'));
     const runtimePlatform =
       PLATFORM === 'windows' ? 'windows-x64' : process.arch === 'arm64' ? 'mac-os-arm64' : 'mac-os';
-    const runtimeManifest = await (
-      await fetchOK(`https://launchermeta.mojang.com/v1/products/java-runtime/${runtimePlatform}.json`)
-    ).json();
+    const runtimeManifest = await (await fetchOK(JAVA_MANIFEST)).json();
     const javaComponent = meta.javaVersion?.component;
-    const javaEntry = runtimeManifest[javaComponent]?.[0];
+    const javaEntry = runtimeManifest[runtimePlatform]?.[javaComponent]?.[0];
     if (!javaEntry?.manifest?.url) throw Error(`Java ${meta.javaVersion?.majorVersion || ''} não está disponível.`);
     const javaDir = path.join(this.root, 'runtime', `${javaComponent}-${runtimePlatform}`);
     const findJava = (dir, depth = 0) => {
@@ -339,9 +342,11 @@ class Runtime {
       }
       return null;
     };
-    let java = findJava(javaDir);
-    if (!java) {
-      const javaManifest = await (await fetchOK(javaEntry.manifest.url)).json();
+    let java;
+    {
+      const javaManifestFile = path.join(this.root, 'metadata', `${javaComponent}-${runtimePlatform}.json`);
+      await download(javaEntry.manifest.url, javaManifestFile, javaEntry.manifest.sha1);
+      const javaManifest = JSON.parse(await fsp.readFile(javaManifestFile, 'utf8'));
       const entries = Object.entries(javaManifest.files || {});
       let completed = 0;
       stage(`Baixando Java ${meta.javaVersion.majorVersion}`, 10);
@@ -371,7 +376,12 @@ class Runtime {
       if (!java) throw Error('O Java necessário não foi instalado corretamente.');
     }
 
-    const profileUrl = `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(releaseId)}/profile/json`;
+    const loaders = await (
+      await fetchOK(`https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(releaseId)}`)
+    ).json();
+    const loader = loaders.find((item) => item.loader?.stable)?.loader?.version;
+    if (!loader) throw Error(`Fabric estável não está disponível para Minecraft ${releaseId}.`);
+    const profileUrl = `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(releaseId)}/${encodeURIComponent(loader)}/profile/json`;
     const profile = await (await fetchOK(profileUrl)).json();
     if (profile.inheritsFrom !== releaseId || !profile.mainClass)
       throw Error('Perfil Fabric incompatível com Minecraft.');
@@ -396,7 +406,7 @@ class Runtime {
           const file = path.join(this.root, 'libraries', relative);
           const base = lib.url || 'https://libraries.minecraft.net/';
           const url = artifact?.url || new URL(relative, base.endsWith('/') ? base : base + '/').href;
-          await download(url, file, artifact?.sha1 || lib.checksums);
+          await download(url, file, artifact?.sha1 || lib.sha1 || lib.checksums);
           classpath.push(file);
         }
         const classifier = lib.natives?.[PLATFORM];
@@ -445,33 +455,10 @@ class Runtime {
       12,
     );
 
-    const modsDir = path.join(game, 'mods');
-    await fsp.mkdir(modsDir, { recursive: true });
-    const modrinth = async (slug, required = false) => {
-      const query = new URLSearchParams({
-        game_versions: JSON.stringify([releaseId]),
-        loaders: JSON.stringify(['fabric']),
-      });
-      const response = await fetch(`https://api.modrinth.com/v2/project/${slug}/version?${query}`, {
-        signal: AbortSignal.timeout(4e4),
-        redirect: 'error',
-      });
-      if (!response.ok) {
-        if (required) throw Error(`O mod ${slug} ainda não tem uma versão Fabric para ${releaseId}.`);
-        return;
-      }
-      const versions = await response.json();
-      const artifact = versions[0]?.files?.find((item) => item.primary) || versions[0]?.files?.[0];
-      if (!artifact) {
-        if (required) throw Error(`Arquivo do mod ${slug} não encontrado.`);
-        return;
-      }
-      const filename = path.basename(new URL(artifact.url).pathname);
-      await download(artifact.url, path.join(modsDir, filename), artifact.hashes?.sha1);
-    };
     stage(`Instalando mods Fabric para ${releaseId}`, 88);
-    await modrinth('sodium', true);
-    await Promise.all(['fabric-api', 'iris', 'lithium', 'ferrite-core'].map((slug) => modrinth(slug).catch(() => {})));
+    const versions = await resolveMods(releaseId, async (url) => (await fetchOK(url)).json());
+    const mods = await installMods(game, versions, download);
+    await fsp.mkdir(path.join(game, 'shaderpacks'), { recursive: true });
 
     const logFile = path.join(this.root, 'metadata', meta.logging?.client?.file?.id || 'client-logging.xml');
     if (meta.logging?.client?.file?.url)
@@ -489,13 +476,13 @@ class Runtime {
       version: releaseId,
       metadata: meta,
       profile,
-      mods: fs.readdirSync(modsDir).filter((file) => file.endsWith('.jar')),
+      mods: mods.map((mod) => mod.file),
     };
     await fsp.writeFile(
       path.join(game, 'installation.json'),
       JSON.stringify({ ...result, metadata: undefined, profile: undefined }, null, 2),
     );
-    stage(`Minecraft ${releaseId} pronto com Fabric`, 100);
+    stage(`Minecraft ${releaseId} pronto com Sodium, Iris e Essential`, 100);
     return result;
   }
   async launch(settings, account, testOptions = {}) {
@@ -562,7 +549,7 @@ class Runtime {
         version_type: 'release',
         natives_directory: installation.natives,
         launcher_name: 'Antagon Client',
-        launcher_version: '0.1.14',
+        launcher_version: require('../package.json').version,
         classpath: installation.classpath.join(path.delimiter),
         classpath_separator: path.delimiter,
         library_directory: path.join(this.root, 'libraries'),
@@ -572,15 +559,7 @@ class Runtime {
       const substitute = (value) => value.replace(/\$\{([^}]+)\}/g, (all, key) => values[key] ?? all);
       const base = installation.metadata.arguments || {};
       const fabric = installation.profile.arguments || {};
-      const jvm = [
-        `-Xmx${settings.memory}G`,
-        '-Xms512M',
-        ...flatten(base.jvm),
-        ...flatten(fabric.jvm),
-        '-Djava.library.path=' + installation.natives,
-        '-cp',
-        values.classpath,
-      ].map(substitute);
+      const jvm = [`-Xmx${settings.memory}G`, '-Xms512M', ...flatten(base.jvm), ...flatten(fabric.jvm)].map(substitute);
       if (installation.logArgument) jvm.push(substitute(installation.logArgument));
       const gameArgs = [...flatten(base.game), ...flatten(fabric.game)].map(substitute);
       if (!gameArgs.includes('--gameDir')) gameArgs.push('--gameDir', game);
@@ -628,7 +607,10 @@ class Runtime {
       if (settings.fullscreen) args.push('--fullscreen');
     }
     const server = /^([A-Za-z0-9.-]{1,253})(?::(\d{1,5}))?$/.exec(testOptions.server || '');
-    if (server) args.push('--server', server[1], '--port', server[2] || '25565');
+    if (server) {
+      if (modern) args.push('--quickPlayMultiplayer', `${server[1]}:${server[2] || '25565'}`);
+      else args.push('--server', server[1], '--port', server[2] || '25565');
+    }
     if (testOptions.smoke) args.unshift('-Dantagon.smoke=true');
     if (testOptions.wallpaper) args.unshift('-Dantagon.wallpaper=' + testOptions.wallpaper);
     if (testOptions.width) {
@@ -660,6 +642,8 @@ class Runtime {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.child = child;
+    let startupOutput = '';
+    let running = false;
     log.on('error', () => {
       child.kill();
       this.emit({ phase: 'error', message: 'Não foi possível gravar o diagnóstico da partida.' });
@@ -668,8 +652,14 @@ class Runtime {
       stream.on('data', (data) => {
         const text = redact(data, account);
         log.write(text);
-        if (text.includes('[ANTAGON] HUD ready') || (modern && text.trim()))
+        if (!running) startupOutput = (startupOutput + text).slice(-16384);
+        if (
+          !running &&
+          (startupOutput.includes('[ANTAGON] HUD ready') || (modern && /Created: [^\r\n]*atlas/.test(startupOutput)))
+        ) {
+          running = true;
           this.emit({ phase: 'running', message: 'No jogo', percent: 100 });
+        }
       });
     child.on('error', () => {
       this.child = null;
