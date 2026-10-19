@@ -111,6 +111,8 @@ async function main() {
     if (!log.includes('[MODERN TEST] Essential loaded')) throw Error('O Essential não foi carregado.');
     if (!log.includes('[MODERN TEST] Antagon capes and Toggle Sprint verified'))
       throw Error('Capas ou Toggle Sprint falharam.');
+    if (!log.includes('[MODERN TEST] Minimap and Litematica schematic verified'))
+      throw Error('Minimapa ou schematic do Litematica falhou.');
     for (const name of [
       'modern-menu',
       'modern-iris',
@@ -118,13 +120,16 @@ async function main() {
       'modern-cape-builtins',
       'modern-cape-custom',
       'modern-cape-sprint',
+      'modern-minimap-settings',
+      'modern-litematica-menu',
+      'modern-litematica-schematic',
     ]) {
       const png = await fs.readFile(path.join(game, 'screenshots', name + '.png'));
       if (png.length < 3000 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
         throw Error('Screenshot inválido: ' + name);
     }
     console.log(
-      `Minecraft ${installation.version} OK com Essential, otimizações e shaders ativos. Evidências: ${game}/screenshots`,
+      `Minecraft ${installation.version} OK: Essential, capas, sprint, minimapa, shaders e Litematica (schematic sem shaders). Evidências: ${game}/screenshots`,
     );
   } finally {
     clearTimeout(timeout);

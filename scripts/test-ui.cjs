@@ -75,6 +75,24 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.click('#home-mods');
     assert.equal(await page.locator('#fabric-row').isVisible(), true);
     assert.equal(await page.locator('#optifine-row').isVisible(), false);
+    assert.match(await page.locator('#fabric-row').textContent(), /Xaero’s Minimap: Y · Litematica: M/);
+    await app.evaluate(({ shell }) => {
+      globalThis.modLinks = [];
+      shell.openExternal = async (url) => {
+        globalThis.modLinks.push(url);
+      };
+    });
+    await page.click('#minimap-site');
+    await page.click('#litematica-site');
+    assert.deepEqual(await app.evaluate(() => globalThis.modLinks), [
+      'https://modrinth.com/mod/xaeros-minimap',
+      'https://modrinth.com/mod/litematica',
+    ]);
+    assert.match(
+      await page.evaluate(() => window.antagon.modSite('../other').catch((error) => error.message)),
+      /desconhecido/,
+    );
+    await page.screenshot({ path: path.join(root, 'docs/modern-settings.png') });
     assert.equal(await page.locator('#memory').inputValue(), '4');
     assert.equal(await page.locator('#fullscreen').isChecked(), false);
     await page.click('[data-view="play"]');

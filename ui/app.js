@@ -226,6 +226,8 @@ action('#optifine-site', async () => {
   await api.optifineSite();
   toast('Baixe a versão 1.8.9 (HD U M5) e depois clique em Instalar.');
 });
+action('#minimap-site', () => api.modSite('xaeros-minimap'));
+action('#litematica-site', () => api.modSite('litematica'));
 $('#optifine-install').onclick = async () => {
   try {
     renderOptifine(await api.installOptifine());

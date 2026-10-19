@@ -483,7 +483,7 @@ class Runtime {
       path.join(game, 'installation.json'),
       JSON.stringify({ ...result, metadata: undefined, profile: undefined }, null, 2),
     );
-    stage(`Minecraft ${releaseId} pronto com Sodium, Iris e Essential`, 100);
+    stage(`Minecraft ${releaseId} pronto com Sodium, Iris, Essential, minimapa e Litematica`, 100);
     return result;
   }
   async launch(settings, account, testOptions = {}) {

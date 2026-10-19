@@ -2,7 +2,16 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { unzipSync } = require('fflate');
 
-const PROJECTS = ['iris', 'sodium', 'fabric-api', 'lithium', 'ferrite-core', 'essential'];
+const PROJECTS = [
+  'iris',
+  'sodium',
+  'fabric-api',
+  'lithium',
+  'ferrite-core',
+  'essential',
+  'xaeros-minimap',
+  'litematica',
+];
 
 async function resolveMods(gameVersion, getJSON) {
   const selected = new Map();

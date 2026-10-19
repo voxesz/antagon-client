@@ -638,6 +638,10 @@ app.whenReady().then(() => {
     return null;
   });
   handle('optifine:site', () => shell.openExternal('https://optifine.net/downloads'));
+  handle('mod:site', (mod) => {
+    if (!['xaeros-minimap', 'litematica'].includes(mod)) throw Error('Mod desconhecido.');
+    return shell.openExternal(`https://modrinth.com/mod/${mod}`);
+  });
   handle('wallpaper:pick', async () => {
     const pick = await dialog.showOpenDialog(win, {
       title: 'Escolha o plano de fundo',

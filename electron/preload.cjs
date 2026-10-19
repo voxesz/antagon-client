@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld('antagon', {
   installOptifine: () => call('optifine:install'),
   removeOptifine: () => call('optifine:remove'),
   optifineSite: () => call('optifine:site'),
+  modSite: (mod) => call('mod:site', mod),
   pickWallpaper: () => call('wallpaper:pick'),
   resetWallpaper: () => call('wallpaper:reset'),
   openFolder: () => call('app:folder'),

@@ -30,6 +30,13 @@ function catalog(overrides = {}) {
       version('essential', 'essential-beta', { version_type: 'beta' }),
       version('essential', 'essential-stable'),
     ],
+    'xaeros-minimap': [version('xaeros-minimap')],
+    litematica: [
+      version('litematica', 'litematica-stable', {
+        dependencies: [{ dependency_type: 'required', project_id: 'malilib' }],
+      }),
+    ],
+    malilib: [version('malilib', 'malilib-beta', { version_type: 'beta' }), version('malilib', 'malilib-stable')],
     ...overrides,
   };
   return async (url) => {
@@ -42,7 +49,19 @@ test('Iris selects its required Sodium instead of the latest incompatible beta',
   const mods = await resolveMods('26.3', catalog());
   assert.equal(mods.find((mod) => mod.project_id === 'sodium').id, 'sodium-pinned');
   assert.equal(mods.find((mod) => mod.project_id === 'essential').id, 'essential-stable');
-  assert.equal(mods.length, 6);
+  assert.equal(mods.length, 9);
+});
+test('client-side map and Litematica include the stable MaLiLib dependency', async () => {
+  const mods = await resolveMods('26.3', catalog());
+  assert.ok(mods.some((mod) => mod.project_id === 'xaeros-minimap'));
+  assert.equal(mods.find((mod) => mod.project_id === 'litematica').id, 'litematica-stable');
+  assert.equal(mods.find((mod) => mod.project_id === 'malilib').id, 'malilib-stable');
+  await assert.rejects(resolveMods('26.3', catalog({ 'xaeros-minimap': [] })), /xaeros-minimap/);
+  await assert.rejects(resolveMods('26.3', catalog({ litematica: [] })), /litematica/);
+  await assert.rejects(
+    resolveMods('26.3', catalog({ malilib: [version('malilib', 'wrong', { game_versions: ['26.2'] })] })),
+    /malilib/,
+  );
 });
 test('a missing Iris release or failed dependency stops preparation', async () => {
   await assert.rejects(resolveMods('26.3', catalog({ iris: [] })), /iris/);

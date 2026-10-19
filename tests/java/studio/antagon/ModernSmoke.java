@@ -21,6 +21,15 @@ import studio.antagon.modern.CapeBridge;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.gui.screen.ShaderPackScreen;
+import fi.dy.masa.litematica.gui.GuiMainMenu;
+import fi.dy.masa.litematica.data.DataManager;
+import fi.dy.masa.litematica.selection.AreaSelection;
+import fi.dy.masa.litematica.selection.Box;
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
+import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
+import fi.dy.masa.litematica.world.SchematicWorldHandler;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
 
 // Built only into the isolated test profile; never distributed with the client.
 public final class ModernSmoke implements ClientModInitializer {
@@ -29,6 +38,7 @@ public final class ModernSmoke implements ClientModInitializer {
     private long diagnostic;
     private int changedTick;
     private RemotePlayer friend;
+    private BlockPos schematicOrigin;
     private static final UUID FRIEND = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private void require(boolean condition, String message) {
@@ -87,7 +97,7 @@ public final class ModernSmoke implements ClientModInitializer {
             System.out.println("[MODERN TEST] Phase=" + phase + "; screen=" + mc.gui.screen());
         }
         if (phase == 0) {
-            for (String id : new String[]{"iris", "sodium", "fabric-api", "lithium", "ferritecore", "essential", "antagon_modern"}) {
+            for (String id : new String[]{"iris", "sodium", "fabric-api", "lithium", "ferritecore", "essential", "antagon_modern", "xaerominimap", "litematica", "malilib"}) {
                 if (!FabricLoader.getInstance().isModLoaded(id)) throw new IllegalStateException("Missing " + id);
             }
             System.out.println("[MODERN TEST] Essential loaded with Sodium, Iris, Lithium and FerriteCore");
@@ -216,8 +226,54 @@ public final class ModernSmoke implements ClientModInitializer {
             screenshot(mc, "modern-cape-sprint");
             System.out.println("[MODERN TEST] Antagon capes and Toggle Sprint verified");
             advance();
-        } else if (phase == 15 && elapsed > 5000) {
-            System.out.println("[MODERN TEST] OK: menu, Iris screen, world and active shaders");
+        } else if (phase == 15 && elapsed > 3000) {
+            try {
+                Object minimapMod = Class.forName("xaero.common.HudMod").getField("INSTANCE").get(null);
+                Object minimap = minimapMod.getClass().getMethod("getMinimap").invoke(minimapMod);
+                require(minimap != null && minimap.getClass().getMethod("getCrashedWith").invoke(minimap) == null,
+                    "Minimap renderer failed");
+                Object helper = minimapMod.getClass().getMethod("getGuiHelper").invoke(minimapMod);
+                helper.getClass().getMethod("openMainSettingsFromScreen", net.minecraft.client.gui.screens.Screen.class).invoke(helper, new Object[]{null});
+            } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+            advance();
+        } else if (phase == 16 && elapsed > 2000) {
+            require(mc.gui.screen() != null && mc.gui.screen().getClass().getName().startsWith("xaero."), "Minimap settings did not open");
+            screenshot(mc, "modern-minimap-settings");
+            mc.gui.setScreen(new GuiMainMenu());
+            advance();
+        } else if (phase == 17 && elapsed > 2000) {
+            require(mc.gui.screen() instanceof GuiMainMenu, "Litematica menu did not open");
+            screenshot(mc, "modern-litematica-menu");
+            mc.gui.setScreen(null);
+            try { Iris.toggleShaders(mc, false); }
+            catch (java.io.IOException error) { throw new RuntimeException(error); }
+            require(!IrisApi.getInstance().isShaderPackInUse(), "Shaders must be disabled for schematic rendering");
+            var area = new AreaSelection();
+            area.setName("Antagon Smoke");
+            area.addSubRegionBox(new Box(BlockPos.ZERO, new BlockPos(2, 2, 0), "wall"), true);
+            var schematic = LitematicaSchematic.createEmptySchematic(area, "AntagonTest");
+            require(schematic != null, "Test schematic creation failed");
+            for (int x = 0; x < 3; x++) for (int y = 0; y < 3; y++)
+                schematic.getSubRegionContainer("wall").set(x, y, 0, Blocks.DIAMOND_BLOCK.defaultBlockState());
+            Path directory = DataManager.getSchematicsBaseDirectory();
+            require(schematic.writeToFile(directory, "antagon-smoke", true), "Schematic save failed");
+            var loaded = LitematicaSchematic.createFromFile(directory, "antagon-smoke.litematic");
+            require(loaded != null && loaded.getSubRegionContainer("wall").get(1, 1, 0).is(Blocks.DIAMOND_BLOCK), "Saved schematic did not load");
+            schematicOrigin = mc.player.blockPosition().offset(-1, 1, 5);
+            var placement = SchematicPlacement.createFor(loaded, schematicOrigin, "Antagon Smoke", true, true);
+            DataManager.getSchematicPlacementManager().addSchematicPlacement(placement, true);
+            mc.options.setCameraType(CameraType.FIRST_PERSON);
+            mc.player.setYRot(0);
+            mc.player.setXRot(0);
+            advance();
+        } else if (phase == 18 && elapsed > 5000) {
+            require(SchematicWorldHandler.getSchematicWorld() != null &&
+                SchematicWorldHandler.getSchematicWorld().getBlockState(schematicOrigin.offset(1, 1, 0)).is(Blocks.DIAMOND_BLOCK),
+                "Schematic placement blocks did not reach Litematica world");
+            require(!mc.level.getBlockState(schematicOrigin.offset(1, 1, 0)).is(Blocks.DIAMOND_BLOCK), "Schematic must not alter real world blocks");
+            screenshot(mc, "modern-litematica-schematic");
+            System.out.println("[MODERN TEST] Minimap and Litematica schematic verified");
+            System.out.println("[MODERN TEST] OK: menu, Iris screen, world, minimap and Litematica");
             advance();
             mc.stop();
         }
