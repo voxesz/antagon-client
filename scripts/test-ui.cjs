@@ -76,6 +76,8 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(await page.locator('#fabric-row').isVisible(), true);
     assert.equal(await page.locator('#optifine-row').isVisible(), false);
     assert.match(await page.locator('#fabric-row').textContent(), /Xaero’s Minimap: Y · Litematica: M/);
+    assert.equal(await page.locator('#worldmap-row').isVisible(), true);
+    assert.match(await page.locator('#worldmap-row').textContent(), /World Map: tecla J/);
     await app.evaluate(({ shell }) => {
       globalThis.modLinks = [];
       shell.openExternal = async (url) => {
@@ -83,9 +85,11 @@ const { DEFAULTS } = require('../electron/settings.cjs');
       };
     });
     await page.click('#minimap-site');
+    await page.click('#worldmap-site');
     await page.click('#litematica-site');
     assert.deepEqual(await app.evaluate(() => globalThis.modLinks), [
       'https://modrinth.com/mod/xaeros-minimap',
+      'https://modrinth.com/mod/xaeros-world-map',
       'https://modrinth.com/mod/litematica',
     ]);
     assert.match(
@@ -98,6 +102,7 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.click('[data-view="play"]');
     await page.selectOption('#game-version', '1.8.9');
     await page.waitForFunction(() => document.querySelector('#home-mods-name').textContent === 'OptiFine');
+    assert.equal(await page.locator('#worldmap-row').isVisible(), false);
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1040, 720));
     await page.click('[data-view="play"]');
     await page.click('#home-settings');

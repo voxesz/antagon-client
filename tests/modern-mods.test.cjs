@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion } = require('../electron/modern-mods.cjs');
+const { resolveMods, installMods, installCompanion, modernOptions } = require('../electron/modern-mods.cjs');
 
 const version = (project, id = project, extra = {}) => ({
   project_id: project,
@@ -31,6 +31,7 @@ function catalog(overrides = {}) {
       version('essential', 'essential-stable'),
     ],
     'xaeros-minimap': [version('xaeros-minimap')],
+    'xaeros-world-map': [version('xaeros-world-map')],
     litematica: [
       version('litematica', 'litematica-stable', {
         dependencies: [{ dependency_type: 'required', project_id: 'malilib' }],
@@ -49,19 +50,32 @@ test('Iris selects its required Sodium instead of the latest incompatible beta',
   const mods = await resolveMods('26.3', catalog());
   assert.equal(mods.find((mod) => mod.project_id === 'sodium').id, 'sodium-pinned');
   assert.equal(mods.find((mod) => mod.project_id === 'essential').id, 'essential-stable');
-  assert.equal(mods.length, 9);
+  assert.equal(mods.length, 10);
 });
 test('client-side map and Litematica include the stable MaLiLib dependency', async () => {
   const mods = await resolveMods('26.3', catalog());
   assert.ok(mods.some((mod) => mod.project_id === 'xaeros-minimap'));
+  assert.ok(mods.some((mod) => mod.project_id === 'xaeros-world-map'));
   assert.equal(mods.find((mod) => mod.project_id === 'litematica').id, 'litematica-stable');
   assert.equal(mods.find((mod) => mod.project_id === 'malilib').id, 'malilib-stable');
   await assert.rejects(resolveMods('26.3', catalog({ 'xaeros-minimap': [] })), /xaeros-minimap/);
+  await assert.rejects(resolveMods('26.3', catalog({ 'xaeros-world-map': [] })), /xaeros-world-map/);
   await assert.rejects(resolveMods('26.3', catalog({ litematica: [] })), /litematica/);
   await assert.rejects(
     resolveMods('26.3', catalog({ malilib: [version('malilib', 'wrong', { game_versions: ['26.2'] })] })),
     /malilib/,
   );
+});
+test('world map starts on J without replacing saved controls or duplicating options', () => {
+  const original = 'fullscreen:false\nkey_key.forward:key.keyboard.w';
+  const configured = modernOptions(original);
+  assert.equal(configured, original + '\nkey_gui.xaero_open_map:key.keyboard.j\n');
+  assert.equal(modernOptions(configured), configured);
+  for (const key of ['key.keyboard.k', 'key.keyboard.unknown', 'key.keyboard.m']) {
+    const custom = `fullscreen:true\r\nkey_gui.xaero_open_map:${key}\r\n`;
+    assert.equal(modernOptions(custom), custom);
+  }
+  assert.equal(modernOptions(''), 'key_gui.xaero_open_map:key.keyboard.j\n');
 });
 test('a missing Iris release or failed dependency stops preparation', async () => {
   await assert.rejects(resolveMods('26.3', catalog({ iris: [] })), /iris/);

@@ -10,6 +10,7 @@ import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.player.RemotePlayer;
 import com.mojang.authlib.GameProfile;
 import java.nio.file.Files;
@@ -39,6 +40,7 @@ public final class ModernSmoke implements ClientModInitializer {
     private int changedTick;
     private RemotePlayer friend;
     private BlockPos schematicOrigin;
+    private double mapScale;
     private static final UUID FRIEND = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private void require(boolean condition, String message) {
@@ -97,7 +99,7 @@ public final class ModernSmoke implements ClientModInitializer {
             System.out.println("[MODERN TEST] Phase=" + phase + "; screen=" + mc.gui.screen());
         }
         if (phase == 0) {
-            for (String id : new String[]{"iris", "sodium", "fabric-api", "lithium", "ferritecore", "essential", "antagon_modern", "xaerominimap", "litematica", "malilib"}) {
+            for (String id : new String[]{"iris", "sodium", "fabric-api", "lithium", "ferritecore", "essential", "antagon_modern", "xaerominimap", "xaeroworldmap", "litematica", "malilib"}) {
                 if (!FabricLoader.getInstance().isModLoaded(id)) throw new IllegalStateException("Missing " + id);
             }
             System.out.println("[MODERN TEST] Essential loaded with Sodium, Iris, Lithium and FerriteCore");
@@ -228,6 +230,27 @@ public final class ModernSmoke implements ClientModInitializer {
             advance();
         } else if (phase == 15 && elapsed > 3000) {
             try {
+                var mapping = (KeyMapping) Class.forName("xaero.map.controls.ControlsRegister").getField("keyOpenMap").get(null);
+                require(mapping.saveString().equals("key.keyboard.j"), "World map must open on J, leaving M for Litematica");
+                KeyMapping.click(InputConstants.getKey("key.keyboard.j"));
+            } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+            advance();
+        } else if (phase == 16 && elapsed > 2500) {
+            require(mc.gui.screen() != null && mc.gui.screen().getClass().getName().equals("xaero.map.gui.GuiMap"), "J did not open the fullscreen world map");
+            try { mapScale = (double) mc.gui.screen().getClass().getMethod("getUserScale").invoke(mc.gui.screen()); }
+            catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+            screenshot(mc, "modern-world-map");
+            mc.gui.screen().mouseScrolled(320, 200, 0, 2);
+            advance();
+        } else if (phase == 17 && elapsed > 2500) {
+            try {
+                double zoomed = (double) mc.gui.screen().getClass().getMethod("getUserScale").invoke(mc.gui.screen());
+                require(Math.abs(zoomed - mapScale) > 0.001, "World map mouse-wheel zoom failed");
+            } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
+            screenshot(mc, "modern-world-map-zoom");
+            System.out.println("[MODERN TEST] Fullscreen world map and J shortcut verified");
+            mc.gui.setScreen(null);
+            try {
                 Object minimapMod = Class.forName("xaero.common.HudMod").getField("INSTANCE").get(null);
                 Object minimap = minimapMod.getClass().getMethod("getMinimap").invoke(minimapMod);
                 require(minimap != null && minimap.getClass().getMethod("getCrashedWith").invoke(minimap) == null,
@@ -236,12 +259,12 @@ public final class ModernSmoke implements ClientModInitializer {
                 helper.getClass().getMethod("openMainSettingsFromScreen", net.minecraft.client.gui.screens.Screen.class).invoke(helper, new Object[]{null});
             } catch (ReflectiveOperationException error) { throw new RuntimeException(error); }
             advance();
-        } else if (phase == 16 && elapsed > 2000) {
+        } else if (phase == 18 && elapsed > 2000) {
             require(mc.gui.screen() != null && mc.gui.screen().getClass().getName().startsWith("xaero."), "Minimap settings did not open");
             screenshot(mc, "modern-minimap-settings");
             mc.gui.setScreen(new GuiMainMenu());
             advance();
-        } else if (phase == 17 && elapsed > 2000) {
+        } else if (phase == 19 && elapsed > 2000) {
             require(mc.gui.screen() instanceof GuiMainMenu, "Litematica menu did not open");
             screenshot(mc, "modern-litematica-menu");
             mc.gui.setScreen(null);
@@ -266,7 +289,7 @@ public final class ModernSmoke implements ClientModInitializer {
             mc.player.setYRot(0);
             mc.player.setXRot(0);
             advance();
-        } else if (phase == 18 && elapsed > 5000) {
+        } else if (phase == 20 && elapsed > 5000) {
             require(SchematicWorldHandler.getSchematicWorld() != null &&
                 SchematicWorldHandler.getSchematicWorld().getBlockState(schematicOrigin.offset(1, 1, 0)).is(Blocks.DIAMOND_BLOCK),
                 "Schematic placement blocks did not reach Litematica world");

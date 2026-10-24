@@ -639,7 +639,7 @@ app.whenReady().then(() => {
   });
   handle('optifine:site', () => shell.openExternal('https://optifine.net/downloads'));
   handle('mod:site', (mod) => {
-    if (!['xaeros-minimap', 'litematica'].includes(mod)) throw Error('Mod desconhecido.');
+    if (!['xaeros-minimap', 'xaeros-world-map', 'litematica'].includes(mod)) throw Error('Mod desconhecido.');
     return shell.openExternal(`https://modrinth.com/mod/${mod}`);
   });
   handle('wallpaper:pick', async () => {

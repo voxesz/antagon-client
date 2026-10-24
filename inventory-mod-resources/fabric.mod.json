@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "antagon_inventory",
+  "version": "1.2.0",
+  "name": "Antagon Inventory",
+  "description": "Organização simples, botões com ícones e envio direto para baús no mundo hospedado pelo jogador.",
+  "environment": "client",
+  "license": "MIT",
+  "authors": ["Antagon Studio"],
+  "entrypoints": { "client": ["studio.antagon.inventory.AntagonInventory"] },
+  "mixins": ["antagon-inventory.mixins.json"],
+  "depends": {
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabricloader": ">=0.20.1",
+    "fabric-api": ">=0.165.0"
+  },
+  "breaks": { "inventoryprofilesnext": "*" }
+}

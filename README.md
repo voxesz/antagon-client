@@ -41,7 +41,7 @@ A partir da versão 0.1.2, o launcher confere se há versão nova no GitHub ao a
 - Windows 10/11 x64, com instalação automática do Java necessário para cada versão
 - Tela inicial com imagem personalizável, navegação centralizada, configurações de jogo e cosméticos em destaque
 - Configurações completas pela engrenagem ao lado do botão de jogar
-- Instalação guiada do OptiFine para 1.8.9; Fabric, Sodium, Iris, Lithium, FerriteCore, Essential, Xaero’s Minimap e Litematica automáticos no perfil mais recente
+- Instalação guiada do OptiFine para 1.8.9; Fabric, Sodium, Iris, Lithium, FerriteCore, Essential, Xaero’s Minimap, Xaero’s World Map e Litematica automáticos no perfil mais recente
 - Versões estáveis dos mods com resolução das dependências do Iris e substituição das versões antigas sem duplicatas
 - Amigos: adicionar pelo nick, ver o que cada um está jogando, entrar no mesmo servidor e conversar (conta Microsoft)
 - Atualização automática pelas Releases do GitHub
@@ -100,7 +100,7 @@ com controles separados. As alterações são visuais; o módulo não modifica a
 
 O conjunto de mods próprios do Antagon, incluindo Item Size e cosméticos no jogo, é do perfil **1.8.9**.
 O perfil **mais recente** usa Fabric, Sodium (renderização), Iris (shaders), Lithium (simulação) e FerriteCore (memória),
-com Fabric API, Essential, Xaero’s Minimap e Litematica (com MaLiLib). O módulo Fabric do Antagon adiciona as **capas da loja** e **Toggle Sprint** a esse perfil.
+com Fabric API, Essential, Xaero’s Minimap, Xaero’s World Map e Litematica (com MaLiLib). O módulo Fabric do Antagon adiciona as **capas da loja** e **Toggle Sprint** a esse perfil.
 Escolha **Mais recente · Sodium + Iris** na tela inicial. Para adicionar shaders, use a tela de shaders do Iris nas opções
 de vídeo; os arquivos `.zip` ficam em `minecraft-<versão>/shaderpacks` dentro da pasta de dados do Antagon Client.
 O launcher instala o Java oficial exigido pelo jogo (Java 25 para 26.3), separado do Java 8 do perfil 1.8.9.
@@ -124,6 +124,12 @@ cada jogador aceita os termos do Essential na primeira utilização.
 O [**Xaero’s Minimap**, de xaero96](https://modrinth.com/mod/xaeros-minimap), adiciona um minimapa e waypoints.
 Funciona no cliente, sem instalar mods no servidor. Abra as configurações com **Y**; as teclas podem ser alteradas nos
 controles do Minecraft. O launcher baixa o arquivo oficial do Modrinth, e a página do autor está acessível nas configurações.
+
+O [**Xaero’s World Map**, de xaero96](https://modrinth.com/mod/xaeros-world-map), mostra as **áreas exploradas em tela cheia**,
+com zoom pela roda do mouse e navegação arrastando o mapa. Ele se integra ao minimapa e aos waypoints, sem exigir mods no servidor.
+No Antagon, o atalho inicial é **J**, para manter **M** disponível para o Litematica. Se você já configurou outra tecla para
+o World Map, ela é preservada. Altere em **Opções → Controles → Xaero’s World Map**. O download é feito diretamente do Modrinth;
+a página oficial também está acessível nas configurações do launcher.
 
 O [**Litematica**](https://modrinth.com/mod/litematica) permite carregar projetos `.litematic` e visualizar os blocos
 que faltam para construir. A biblioteca [MaLiLib](https://modrinth.com/mod/malilib) é instalada automaticamente.
@@ -158,7 +164,7 @@ npm start
 | Comando | O que faz |
 | --- | --- |
 | `npm run install:game` | Baixa e instala Minecraft 1.8.9 + Forge sem abrir o launcher |
-| `npm run install:modern` | Instala a versão estável mais recente, Java, Fabric, otimizações, Iris, Essential, minimapa e Litematica |
+| `npm run install:modern` | Instala a versão estável mais recente, Java, Fabric, otimizações, Iris, Essential, minimapa, mapa em tela cheia e Litematica |
 | `npm run build:modern` | Compila o módulo Fabric de capas e Toggle Sprint; baixa as dependências de compilação quando necessário |
 | `npm test` | Testes de estado, downloads, privacidade e protocolo do Discord |
 | `npm run test:java` | Testes de reflexão e limites do menu em diferentes resoluções |

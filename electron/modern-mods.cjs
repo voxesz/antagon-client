@@ -10,8 +10,15 @@ const PROJECTS = [
   'ferrite-core',
   'essential',
   'xaeros-minimap',
+  'xaeros-world-map',
   'litematica',
 ];
+
+function modernOptions(options) {
+  // World Map and Litematica both use M by default. Seed J once and keep user choices on later launches.
+  if (/^key_gui\.xaero_open_map:/m.test(options)) return options;
+  return options + (options && !options.endsWith('\n') ? '\n' : '') + 'key_gui.xaero_open_map:key.keyboard.j\n';
+}
 
 async function resolveMods(gameVersion, getJSON) {
   const selected = new Map();
@@ -132,4 +139,4 @@ async function installCompanion(game, assets, gameVersion) {
   return filename;
 }
 
-module.exports = { resolveMods, installMods, installCompanion };
+module.exports = { resolveMods, installMods, installCompanion, modernOptions };

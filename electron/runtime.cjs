@@ -6,7 +6,7 @@ const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion } = require('./modern-mods.cjs');
+const { resolveMods, installMods, installCompanion, modernOptions } = require('./modern-mods.cjs');
 const JAVA_MANIFEST =
   'https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json';
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
@@ -483,7 +483,7 @@ class Runtime {
       path.join(game, 'installation.json'),
       JSON.stringify({ ...result, metadata: undefined, profile: undefined }, null, 2),
     );
-    stage(`Minecraft ${releaseId} pronto com Sodium, Iris, Essential, minimapa e Litematica`, 100);
+    stage(`Minecraft ${releaseId} pronto com Sodium, Iris, Essential, mapas e Litematica`, 100);
     return result;
   }
   async launch(settings, account, testOptions = {}) {
@@ -500,6 +500,7 @@ class Runtime {
       );
     let optionText = await fsp.readFile(options, 'utf8');
     optionText = optionText.replace(/^fullscreen:.*$/m, () => 'fullscreen:' + settings.fullscreen);
+    if (modern) optionText = modernOptions(optionText);
     if (!modern)
       for (const [k, v] of [
         ['useVbo', 'true'],

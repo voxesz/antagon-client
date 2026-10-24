@@ -227,6 +227,7 @@ action('#optifine-site', async () => {
   toast('Baixe a versão 1.8.9 (HD U M5) e depois clique em Instalar.');
 });
 action('#minimap-site', () => api.modSite('xaeros-minimap'));
+action('#worldmap-site', () => api.modSite('xaeros-world-map'));
 action('#litematica-site', () => api.modSite('litematica'));
 $('#optifine-install').onclick = async () => {
   try {
@@ -1072,6 +1073,7 @@ function renderVersion(version, installed = false) {
     : 'Forge · Antagon · ' + (installed ? 'pronto para jogar' : 'instalação automática');
   $('#optifine-row').hidden = modern;
   $('#fabric-row').hidden = !modern;
+  $('#worldmap-row').hidden = !modern;
   renderHomeMods();
 }
 

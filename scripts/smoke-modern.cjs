@@ -113,6 +113,8 @@ async function main() {
       throw Error('Capas ou Toggle Sprint falharam.');
     if (!log.includes('[MODERN TEST] Minimap and Litematica schematic verified'))
       throw Error('Minimapa ou schematic do Litematica falhou.');
+    if (!log.includes('[MODERN TEST] Fullscreen world map and J shortcut verified'))
+      throw Error('Mapa em tela cheia ou atalho J falhou.');
     for (const name of [
       'modern-menu',
       'modern-iris',
@@ -120,6 +122,8 @@ async function main() {
       'modern-cape-builtins',
       'modern-cape-custom',
       'modern-cape-sprint',
+      'modern-world-map',
+      'modern-world-map-zoom',
       'modern-minimap-settings',
       'modern-litematica-menu',
       'modern-litematica-schematic',
@@ -129,7 +133,7 @@ async function main() {
         throw Error('Screenshot inválido: ' + name);
     }
     console.log(
-      `Minecraft ${installation.version} OK: Essential, capas, sprint, minimapa, shaders e Litematica (schematic sem shaders). Evidências: ${game}/screenshots`,
+      `Minecraft ${installation.version} OK: Essential, capas, sprint, minimapa, mapa em tela cheia, shaders e Litematica (schematic sem shaders). Evidências: ${game}/screenshots`,
     );
   } finally {
     clearTimeout(timeout);

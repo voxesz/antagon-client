@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "studio.antagon.inventory.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["ContainerScreenAccessor"],
+  "injectors": { "defaultRequire": 1 }
+}
