@@ -6,7 +6,7 @@ const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion, modernOptions } = require('./modern-mods.cjs');
+const { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions } = require('./modern-mods.cjs');
 const JAVA_MANIFEST =
   'https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json';
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
@@ -459,6 +459,11 @@ class Runtime {
     const versions = await resolveMods(releaseId, async (url) => (await fetchOK(url)).json());
     const mods = await installMods(game, versions, download);
     const companion = await installCompanion(game, this.assets, releaseId);
+    const fabricApi = versions.find((mod) => mod.project_id === 'fabric-api');
+    if (!fabricApi) throw Error('Fabric API não foi preparado para o Antagon Inventory.');
+    const inventory = await installInventoryCompanion(game, this.assets, releaseId, loader, fabricApi.version_number);
+    const managed = [...mods, { project: 'antagon-inventory', version: '1.2.0', id: 'antagon_inventory', file: inventory }];
+    await fsp.writeFile(path.join(game, 'antagon-mods.json'), JSON.stringify(managed, null, 2));
     await fsp.mkdir(path.join(game, 'shaderpacks'), { recursive: true });
 
     const logFile = path.join(this.root, 'metadata', meta.logging?.client?.file?.id || 'client-logging.xml');
@@ -477,13 +482,13 @@ class Runtime {
       version: releaseId,
       metadata: meta,
       profile,
-      mods: [...mods.map((mod) => mod.file), companion],
+      mods: [...mods.map((mod) => mod.file), companion, inventory],
     };
     await fsp.writeFile(
       path.join(game, 'installation.json'),
       JSON.stringify({ ...result, metadata: undefined, profile: undefined }, null, 2),
     );
-    stage(`Minecraft ${releaseId} pronto com Sodium, Iris, Essential, mapas e Litematica`, 100);
+    stage(`Minecraft ${releaseId} pronto com Sodium, Iris, Essential, mapas, Litematica e Antagon Inventory`, 100);
     return result;
   }
   async launch(settings, account, testOptions = {}) {

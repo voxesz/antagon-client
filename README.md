@@ -138,6 +138,11 @@ Abra o menu com **M** e as configurações com **M + C**. Coloque os projetos na
 Também funciona apenas no cliente. Conforme a [orientação dos autores](https://modrinth.com/mod/litematica),
 **desative os shaders no Iris ao visualizar schematics** nas versões atuais do Minecraft.
 
+O **Antagon Inventory** é instalado automaticamente no perfil Minecraft 26.3. Ele adiciona botões para organizar itens,
+movimentar pilhas e enviar itens equivalentes diretamente aos baús do mundo integrado hospedado por você. Os convidados
+não precisam instalar o mod. Para preservar compatibilidade, o launcher exige as versões estáveis compatíveis de Fabric Loader
+e Fabric API.
+
 No módulo **CPS**, escolha **ambos**, **esquerdo** ou **direito** em **Botões do mouse** e use
 **Mostrar CPS** para ligar ou desligar o sufixo. O padrão continua `0 | 0 CPS`.
 

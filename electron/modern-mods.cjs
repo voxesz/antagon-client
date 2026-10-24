@@ -139,4 +139,74 @@ async function installCompanion(game, assets, gameVersion) {
   return filename;
 }
 
-module.exports = { resolveMods, installMods, installCompanion, modernOptions };
+function versionAtLeast(version, minimum) {
+  const numbers = (value) => (String(value).match(/\d+/g) || []).slice(0, 3).map(Number);
+  const actual = numbers(version);
+  const required = numbers(minimum);
+  for (let i = 0; i < 3; i++) {
+    const difference = (actual[i] || 0) - (required[i] || 0);
+    if (difference) return difference > 0;
+  }
+  return true;
+}
+
+async function installInventoryCompanion(game, assets, gameVersion, loaderVersion, fabricApiVersion) {
+  if (gameVersion !== '26.3') throw Error('Antagon Inventory requer Minecraft 26.3.');
+  const filename = `antagon-inventory-${gameVersion}.jar`;
+  const source = path.join(assets, filename);
+  const data = await fs.readFile(source).catch(() => {
+    throw Error(`O Antagon Inventory para Minecraft ${gameVersion} não está disponível. Atualize o launcher.`);
+  });
+  const entry = unzipSync(data, { filter: (item) => item.name === 'fabric.mod.json' })['fabric.mod.json'];
+  if (!entry) throw Error('O JAR do Antagon Inventory é inválido.');
+  const metadata = JSON.parse(Buffer.from(entry).toString('utf8'));
+  if (metadata.id !== 'antagon_inventory' || metadata.environment !== 'client')
+    throw Error('O módulo Antagon Inventory é inválido.');
+  const requiredLoader = String(metadata.depends?.fabricloader || '').match(/>=\s*([\d.]+)/)?.[1];
+  const requiredApi = String(metadata.depends?.['fabric-api'] || '').match(/>=\s*([\d.]+)/)?.[1];
+  if (!requiredLoader || !versionAtLeast(loaderVersion, requiredLoader))
+    throw Error(`O Antagon Inventory requer Fabric Loader ${requiredLoader || 'compatível'} ou superior.`);
+  if (!requiredApi || !versionAtLeast(fabricApiVersion, requiredApi))
+    throw Error(`O Antagon Inventory requer Fabric API ${requiredApi || 'compatível'} ou superior.`);
+
+  const mods = path.join(game, 'mods');
+  await fs.mkdir(mods, { recursive: true });
+  const target = path.join(mods, filename);
+  if (await fs.readFile(target).then((current) => current.equals(data)).catch(() => false)) return filename;
+  const archived = [];
+  const archive = async (file) => {
+    const backup = path.join(game, 'antagon-mod-backups');
+    await fs.mkdir(backup, { recursive: true });
+    const from = path.join(mods, file);
+    const to = path.join(backup, `${Date.now()}-${file}`);
+    await fs.rename(from, to);
+    archived.push({ from, to });
+  };
+  if (await fs.access(target).then(() => true).catch(() => false)) await archive(filename);
+  for (const file of await fs.readdir(mods)) {
+    if (!file.endsWith('.jar')) continue;
+    try {
+      const modEntry = unzipSync(await fs.readFile(path.join(mods, file)), {
+        filter: (item) => item.name === 'fabric.mod.json',
+      })['fabric.mod.json'];
+      if (modEntry && JSON.parse(Buffer.from(modEntry).toString('utf8')).id === 'antagon_inventory') await archive(file);
+    } catch {}
+  }
+  const pending = `${target}.installing`;
+  await fs.writeFile(pending, data);
+  try {
+    const check = unzipSync(await fs.readFile(pending), {
+      filter: (item) => item.name === 'fabric.mod.json',
+    })['fabric.mod.json'];
+    if (!check || JSON.parse(Buffer.from(check).toString('utf8')).id !== 'antagon_inventory')
+      throw Error('Falha ao validar o JAR do Antagon Inventory.');
+    await fs.rename(pending, target);
+  } catch (error) {
+    await fs.rm(pending, { force: true });
+    for (const item of archived.reverse()) await fs.rename(item.to, item.from).catch(() => {});
+    throw error;
+  }
+  return filename;
+}
+
+module.exports = { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions };
