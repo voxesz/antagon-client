@@ -150,8 +150,12 @@ function versionAtLeast(version, minimum) {
   return true;
 }
 
-async function installInventoryCompanion(game, assets, gameVersion, loaderVersion, fabricApiVersion) {
+async function installInventoryCompanion(game, assets, gameVersion, loaderVersion, installedMods) {
   if (gameVersion !== '26.3') throw Error('Antagon Inventory requer Minecraft 26.3.');
+  // Modrinth uses opaque project IDs (P7dR8mSH), while the installed JAR declares fabric-api.
+  const fabricApi = installedMods.find((mod) => mod.id === 'fabric-api');
+  if (!fabricApi) throw Error('Fabric API não foi preparado para o Antagon Inventory.');
+  const fabricApiVersion = fabricApi.version;
   const filename = `antagon-inventory-${gameVersion}.jar`;
   const source = path.join(assets, filename);
   const data = await fs.readFile(source).catch(() => {

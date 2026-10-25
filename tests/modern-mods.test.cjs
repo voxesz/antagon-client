@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion, modernOptions } = require('../electron/modern-mods.cjs');
+const { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions } = require('../electron/modern-mods.cjs');
 
 const version = (project, id = project, extra = {}) => ({
   project_id: project,
@@ -138,4 +138,36 @@ test('bundled Fabric companion updates renamed copies without touching third-par
   assert.deepEqual(await fs.readFile(path.join(game, 'mods/antagon-modern-26.3.jar')), Buffer.from(update));
   await assert.rejects(installCompanion(game, assets, '26.4'), /Atualize o launcher/);
   await assert.rejects(installCompanion(game, assets, '../../elsewhere'), /inválida/);
+});
+
+test('Inventory installs with the real opaque Modrinth Fabric API project ID', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'antagon-inventory-dependencies-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const game = path.join(root, 'game');
+  const assets = path.join(root, 'assets');
+  await fs.mkdir(assets);
+  const bytes = zipSync({
+    'fabric.mod.json': Buffer.from(JSON.stringify({
+      id: 'antagon_inventory', version: '1.2.0', environment: 'client',
+      depends: { fabricloader: '>=0.20.1', 'fabric-api': '>=0.165.0' },
+    })),
+  });
+  await fs.writeFile(path.join(assets, 'antagon-inventory-26.3.jar'), bytes);
+  const api = { project: 'P7dR8mSH', id: 'fabric-api', version: '0.165.0+26.3', file: 'fabric-api.jar' };
+  const filename = await installInventoryCompanion(game, assets, '26.3', '0.20.1', [api]);
+  assert.equal(filename, 'antagon-inventory-26.3.jar');
+  assert.deepEqual(await fs.readFile(path.join(game, 'mods', filename)), Buffer.from(bytes));
+  // Repeat from the installed state to cover the launcher's cached preparation path.
+  assert.equal(await installInventoryCompanion(game, assets, '26.3', '0.20.2', [api]), filename);
+  await assert.rejects(installInventoryCompanion(game, assets, '26.3', '0.20.1', []), /Fabric API não foi preparado/);
+  await assert.rejects(
+    installInventoryCompanion(game, assets, '26.3', '0.20.1', [{ ...api, id: 'another-mod', project: 'fabric-api' }]),
+    /Fabric API não foi preparado/,
+  );
+  await assert.rejects(
+    installInventoryCompanion(game, assets, '26.3', '0.20.1', [{ ...api, version: '0.164.0+26.3' }]),
+    /requer Fabric API 0.165.0/,
+  );
+  await assert.rejects(installInventoryCompanion(game, assets, '26.3', '0.19.5', [api]), /requer Fabric Loader 0.20.1/);
+  assert.deepEqual(await fs.readFile(path.join(game, 'mods', filename)), Buffer.from(bytes));
 });

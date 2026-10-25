@@ -459,9 +459,7 @@ class Runtime {
     const versions = await resolveMods(releaseId, async (url) => (await fetchOK(url)).json());
     const mods = await installMods(game, versions, download);
     const companion = await installCompanion(game, this.assets, releaseId);
-    const fabricApi = versions.find((mod) => mod.project_id === 'fabric-api');
-    if (!fabricApi) throw Error('Fabric API não foi preparado para o Antagon Inventory.');
-    const inventory = await installInventoryCompanion(game, this.assets, releaseId, loader, fabricApi.version_number);
+    const inventory = await installInventoryCompanion(game, this.assets, releaseId, loader, mods);
     const managed = [...mods, { project: 'antagon-inventory', version: '1.2.0', id: 'antagon_inventory', file: inventory }];
     await fsp.writeFile(path.join(game, 'antagon-mods.json'), JSON.stringify(managed, null, 2));
     await fsp.mkdir(path.join(game, 'shaderpacks'), { recursive: true });
