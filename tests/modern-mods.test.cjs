@@ -4,7 +4,14 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions } = require('../electron/modern-mods.cjs');
+const {
+  resolveMods,
+  installMods,
+  installCompanion,
+  installInventoryCompanion,
+  installBot,
+  modernOptions,
+} = require('../electron/modern-mods.cjs');
 
 const version = (project, id = project, extra = {}) => ({
   project_id: project,
@@ -170,4 +177,31 @@ test('Inventory installs with the real opaque Modrinth Fabric API project ID', a
   );
   await assert.rejects(installInventoryCompanion(game, assets, '26.3', '0.19.5', [api]), /requer Fabric Loader 0.20.1/);
   assert.deepEqual(await fs.readFile(path.join(game, 'mods', filename)), Buffer.from(bytes));
+});
+
+test('bot is installed only when allowed and replaces other Baritone copies', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'antagon-bot-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const game = path.join(root, 'game');
+  const assets = path.join(root, 'assets');
+  const mods = path.join(game, 'mods');
+  await fs.mkdir(mods, { recursive: true });
+  await fs.mkdir(assets);
+  const jar = (id) => zipSync({ 'fabric.mod.json': Buffer.from(JSON.stringify({ id })) });
+  await fs.writeFile(path.join(assets, 'baritone-26.3.jar'), jar('baritone'));
+  await fs.writeFile(path.join(mods, 'baritone-manual.jar'), jar('baritone'));
+  await fs.writeFile(path.join(mods, 'essential.jar'), jar('essential'));
+
+  await installBot(game, assets, '26.3', false);
+  assert.deepEqual((await fs.readdir(mods)).sort(), ['baritone-manual.jar', 'essential.jar']);
+
+  await installBot(game, assets, '26.3', true);
+  assert.deepEqual((await fs.readdir(mods)).sort(), ['baritone-26.3.jar', 'essential.jar']);
+  assert.equal((await fs.readdir(path.join(game, 'antagon-mod-backups'))).length, 1);
+
+  await installBot(game, assets, '26.4', true);
+  assert.deepEqual((await fs.readdir(mods)).sort(), ['baritone-26.3.jar', 'essential.jar']);
+
+  await installBot(game, assets, '26.3', false);
+  assert.deepEqual(await fs.readdir(mods), ['essential.jar']);
 });

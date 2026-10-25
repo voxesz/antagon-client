@@ -6,7 +6,7 @@ const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
 const { unzipSync } = require('fflate');
-const { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions } = require('./modern-mods.cjs');
+const { resolveMods, installMods, installCompanion, installInventoryCompanion, installBot, modernOptions } = require('./modern-mods.cjs');
 const JAVA_MANIFEST =
   'https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json';
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
@@ -309,7 +309,7 @@ class Runtime {
     stage('Pronto para entrar', 100);
     return result;
   }
-  async prepareModern() {
+  async prepareModern(bot = false) {
     const stage = (message, percent) => this.emit({ phase: 'preparing', message, percent });
     const manifest = await (await fetchOK('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')).json();
     const releaseId = manifest.latest?.release;
@@ -460,6 +460,7 @@ class Runtime {
     const mods = await installMods(game, versions, download);
     const companion = await installCompanion(game, this.assets, releaseId);
     const inventory = await installInventoryCompanion(game, this.assets, releaseId, loader, mods);
+    await installBot(game, this.assets, releaseId, bot);
     const managed = [...mods, { project: 'antagon-inventory', version: '1.2.0', id: 'antagon_inventory', file: inventory }];
     await fsp.writeFile(path.join(game, 'antagon-mods.json'), JSON.stringify(managed, null, 2));
     await fsp.mkdir(path.join(game, 'shaderpacks'), { recursive: true });
@@ -492,7 +493,7 @@ class Runtime {
   async launch(settings, account, testOptions = {}) {
     if (this.child) throw Error('O jogo já está aberto.');
     const modern = settings.gameVersion === 'latest-26';
-    const installation = modern ? await this.prepareModern() : await this.prepare();
+    const installation = modern ? await this.prepareModern(testOptions.bot === true) : await this.prepare();
     const game = installation.game || this.game;
     this.activeGame = game;
     const options = path.join(game, 'options.txt');

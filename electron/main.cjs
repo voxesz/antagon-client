@@ -337,15 +337,18 @@ async function startGame(server) {
       active = await microsoftSession();
     }
     await communityReady;
-    let access = { isAdmin: false };
+    let access = { isAdmin: false },
+      bot = false;
     if (settings.mode === 'microsoft') {
       if (community?.me?.mcUuid !== active.id) await connectCommunity();
       if (!community?.me) throw Error('Não foi possível verificar sua conta no Antagon Client.');
       access = await community.requireActive();
+      bot = access.isAdmin || (await community.botAccess());
     }
     const result = await runtime.launch(settings, active, {
       server,
       admin: access.isAdmin,
+      bot,
       beforeSpawn: async (game) => {
         cosmeticsBridge = new CosmeticsBridge(game, community, (id) => cosmeticImage(id, game));
         if (settings.mode !== 'microsoft' || !community?.me) return;

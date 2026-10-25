@@ -213,4 +213,29 @@ async function installInventoryCompanion(game, assets, gameVersion, loaderVersio
   return filename;
 }
 
-module.exports = { resolveMods, installMods, installCompanion, installInventoryCompanion, modernOptions };
+// Baritone (patched for Essential, see scripts/patch-baritone.java) only for admins and invited players.
+// Revoking removes the launcher's copy; a Baritone the player installed by hand is left alone.
+async function installBot(game, assets, gameVersion, allowed) {
+  const filename = `baritone-${gameVersion}.jar`;
+  const mods = path.join(game, 'mods');
+  const data = allowed && (await fs.readFile(path.join(assets, filename)).catch(() => null));
+  if (!data) return fs.rm(path.join(mods, filename), { force: true });
+  for (const file of await fs.readdir(mods)) {
+    if (!file.endsWith('.jar') || file === filename) continue;
+    try {
+      const entry = unzipSync(await fs.readFile(path.join(mods, file)), {
+        filter: (item) => item.name === 'fabric.mod.json',
+      })['fabric.mod.json'];
+      if (!entry || JSON.parse(Buffer.from(entry).toString('utf8')).id !== 'baritone') continue;
+    } catch {
+      continue;
+    }
+    // Two Baritone jars would stop Fabric from starting.
+    const backup = path.join(game, 'antagon-mod-backups');
+    await fs.mkdir(backup, { recursive: true });
+    await fs.rename(path.join(mods, file), path.join(backup, `${Date.now()}-${file}`));
+  }
+  await fs.writeFile(path.join(mods, filename), data);
+}
+
+module.exports = { resolveMods, installMods, installCompanion, installInventoryCompanion, installBot, modernOptions };

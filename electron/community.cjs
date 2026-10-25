@@ -154,6 +154,13 @@ class Community {
     };
   }
 
+  // False until the bot_access migration is applied; admins are covered by access().isAdmin.
+  async botAccess() {
+    if (!this.me) return false;
+    const { data, error } = await this.db.rpc('has_bot_access');
+    return !error && data === true;
+  }
+
   async requireActive() {
     const access = await this.access();
     if (access.isBanned) throw Error(`Conta banida do Antagon Client: ${access.banReason || 'sem motivo informado'}`);
@@ -165,7 +172,8 @@ class Community {
     const { data, error } = await this.db.rpc('admin_find_user', { p_name: name });
     if (error) throw Error(error.message || 'Não foi possível buscar o jogador.');
     if (!data?.length) throw Error('Jogador ainda não registrado no Antagon Client.');
-    return data[0];
+    const bot = await this.db.rpc('admin_bot_access', { p_target: data[0].user_id });
+    return { ...data[0], has_bot: bot.error ? null : bot.data === true };
   }
 
   async adminChange(action, id, value) {
@@ -175,6 +183,7 @@ class Community {
       ban: ['admin_set_ban', { p_target: id, p_banned: value?.banned === true, p_reason: value?.reason || null }],
       coins: ['admin_set_coins', { p_target: id, p_balance: value }],
       item: ['admin_set_item', { p_target: id, p_item: value?.item, p_grant: value?.grant === true }],
+      bot: ['admin_set_bot', { p_target: id, p_allowed: value === true }],
     };
     if (!Object.hasOwn(commands, action)) throw Error('Ação inválida.');
     const [rpc, args] = commands[action];

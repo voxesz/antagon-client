@@ -446,6 +446,10 @@ function renderAdminTarget() {
     .join('');
   $('#admin-role-card').hidden = !adminAccess.isOwner || user.user_id === people.me?.id || user.is_owner;
   $('#admin-role-button').textContent = user.is_admin ? 'Remover admin' : 'Tornar admin';
+  // Admins always have the bot; null means the bot_access migration is not applied yet.
+  $('#admin-bot-card').hidden = user.has_bot == null || user.is_admin;
+  $('#admin-bot-status').textContent = user.has_bot ? 'Bot liberado' : 'Sem acesso ao bot';
+  $('#admin-bot-button').textContent = user.has_bot ? 'Remover bot' : 'Liberar bot';
   $('#admin-ban-status').textContent = user.is_banned ? `Banido: ${user.ban_reason}` : 'Conta ativa';
   $('#admin-ban-button').textContent = user.is_banned ? 'Desbanir usuário' : 'Banir usuário';
   $('#admin-ban-button').disabled = user.is_admin || user.user_id === people.me?.id;
@@ -477,6 +481,8 @@ $('#admin-result').onclick = async (event) => {
     value = { item: button.dataset.item, grant: !adminTarget.items.includes(button.dataset.item) };
   } else if (action === 'role') {
     value = !adminTarget.is_admin;
+  } else if (action === 'bot') {
+    value = !adminTarget.has_bot;
   } else if (action === 'ban') {
     value = { banned: !adminTarget.is_banned, reason: $('#admin-ban-reason').value.trim() };
     if (value.banned && !value.reason) return toast('Informe o motivo do banimento.');
